@@ -29,8 +29,6 @@ popup reuse, fullscreen behavior, scrolling, split handles, keyboard focus and
 rendering quality. See the [v0.8.1 release notes](doc/ReleaseV081.md) for fixes
 and required API migration, and the [demo guide](example/demo/README.md) for examples.
 
-The screenshots were captured with Demo v0.6.0.
-
 | Platform | Demo download |
 | --- | --- |
 | Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-windows-amd64.exe) |
@@ -42,17 +40,17 @@ The downloads above are Demo **0.8.1 / build 1**. See the [release notes](https:
 On Linux, run `chmod +x goui-demo-v0.8.1-linux-amd64` before launching it.
 On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized.
 
-Windows — Direct2D, dark appearance
+Windows — Direct2D, dark appearance, Chinese · Basic controls
 
-<img src="doc/images/demo-windows.png" alt="GOUI Demo v0.6.0 on Windows">
+<img src="doc/images/demo-windows.png" alt="GOUI Demo on Windows: Chinese basic controls in dark appearance, including window chrome">
 
-macOS — OpenGL, light appearance
+macOS — OpenGL, light appearance, English, green accent · Data browsing
 
-<img src="doc/images/demo-macOS.png" alt="GOUI Demo v0.6.0 on macOS">
+<img src="doc/images/demo-macOS.png" alt="GOUI Demo on macOS: English data browsing in light appearance with a green accent, including window chrome">
 
-Linux / X11 — OpenGL, light appearance
+Linux / X11 — OpenGL, light appearance, Arabic, purple accent · Graphics and animation
 
-<img src="doc/images/demo-linux.png" alt="GOUI Demo v0.6.0 on Linux">
+<img src="doc/images/demo-linux.png" alt="GOUI Demo on Linux/X11: Arabic graphics page in light appearance with a purple accent, including window chrome">
 
 To run the current source from the repository root:
 
@@ -91,7 +89,7 @@ Built with Go 1.25.8, `CGO_ENABLED=0`, `-trimpath`, and `-ldflags="-s -w"`, with
 | macOS arm64 | 6.05 MiB | 10.54 MiB |
 | Linux amd64 | 6.51 MiB | 11.79 MiB |
 
-The full demo includes its logo, SVG icons, eight-language resources, and nine feature pages. Windows includes generated icon and version resources. These figures are from v0.8.0 development builds; the minimal app is the counter below. They are not published release artifacts; `.app` metadata, installer/archive overhead, and system libraries are not included.
+The full demo includes its logo, SVG icons, eight-language resources, and nine feature pages. Windows includes generated icon and version resources; `.app` metadata, installer/archive overhead, and system libraries are not included.
 
 ### Process memory usage
 

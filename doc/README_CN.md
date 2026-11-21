@@ -28,8 +28,6 @@ Demo **0.8.1 / build 1** 已随修复版本 v0.8.1 发布，重点处理
 弹层复用、全屏、滚动、分隔条、键盘焦点和绘制质量。修复与必要的 API 迁移见
 [v0.8.1 发布说明](ReleaseV081.md)，示例操作见 [Demo 使用说明](../example/demo/README.md)。
 
-下方下载为 **v0.8.1**；截图仍为 Demo v0.6.0。
-
 | 平台 | Demo 下载 |
 | --- | --- |
 | Windows x64 | [下载 EXE](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-windows-amd64.exe) |
@@ -41,17 +39,17 @@ Demo **0.8.1 / build 1** 已随修复版本 v0.8.1 发布，重点处理
 Linux 下载后先执行 `chmod +x goui-demo-v0.8.1-linux-amd64`，再启动程序。
 macOS 解压后打开 `GOUI Demo.app`，已使用 Developer ID 签名并通过 Apple 公证。
 
-Windows — Direct2D，暗色外观
+Windows — Direct2D，暗色外观，中文 · 基础控件
 
-<img src="images/demo-windows.png" alt="Windows 上的 GOUI Demo v0.6.0">
+<img src="images/demo-windows.png" alt="Windows 上的 GOUI Demo：中文暗色基础控件页，包含完整窗口外观">
 
-macOS — OpenGL，亮色外观
+macOS — OpenGL，亮色外观，英文，绿色强调色 · 数据浏览
 
-<img src="images/demo-macOS.png" alt="macOS 上的 GOUI Demo v0.6.0">
+<img src="images/demo-macOS.png" alt="macOS 上的 GOUI Demo：英文亮色数据浏览页，绿色强调色，包含完整窗口外观">
 
-Linux / X11 — OpenGL，亮色外观
+Linux / X11 — OpenGL，亮色外观，阿拉伯文，紫色强调色 · 图形与动画
 
-<img src="images/demo-linux.png" alt="Linux 上的 GOUI Demo v0.6.0">
+<img src="images/demo-linux.png" alt="Linux/X11 上的 GOUI Demo：阿拉伯文亮色图形页，紫色强调色，包含完整窗口外观">
 
 也可以在仓库根目录直接运行当前源码：
 
@@ -90,7 +88,7 @@ GOUI 是原生GUI框架，资源占用较小，但具体可执行文件大小与
 | macOS arm64 | 6.05 MiB | 10.54 MiB |
 | Linux amd64 | 6.51 MiB | 11.79 MiB |
 
-完整 Demo 包含 Logo、SVG 图标、八语言资源和九个功能页面；Windows 包含生成的图标及版本资源。数据来自 v0.8.0 开发构建，最小应用为下文计数器，并非已经发布的下载产物；不包含 `.app`元数据、安装包／压缩包开销或系统库。
+完整 Demo 包含 Logo、SVG 图标、八语言资源和九个功能页面；Windows 包含生成的图标及版本资源。不包含 `.app`元数据、安装包／压缩包开销或系统库。
 
 ### 进程内存占用
 
