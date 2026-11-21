@@ -417,6 +417,124 @@ func TestCommandBindEnabledDoesNotRebuildContent(t *testing.T) {
 	}
 }
 
+func TestCommandBindCheckedSharesStateWithoutRebuilding(t *testing.T) {
+	for _, host := range []string{"menu", "shortcut", "scope"} {
+		t.Run(host, func(t *testing.T) {
+			checked, replacement := MakeState(false), MakeState(true)
+			source, bound, checkable, direct := &checked, true, true, false
+			builds, activations := 0, 0
+			rt, fake := bindingApp(t, func() RootView {
+				builds++
+				definition := Command("toggle").Checkable(checkable).Checked(direct).OnActivate(func() {
+					activations++
+					source.Set(!source.Get())
+				})
+				if bound {
+					definition.BindChecked(source)
+				}
+				item := MenuItem("Check").Command("toggle")
+				if host == "menu" {
+					item.DefineCommand(definition)
+				}
+				box := VBox(MenuButton("Menu").Menu(item), Label("editor")).Shortcuts(Shortcut(KeyF5).Command("toggle"))
+				scope := CommandGroup(box)
+				if host == "shortcut" {
+					box.Shortcuts(Shortcut(KeyF5).DefineCommand(definition))
+				} else if host == "scope" {
+					scope.Commands(definition)
+				}
+				return Window("main").Content(scope)
+			})
+			w := fake.windows[0]
+			menu := w.Widget().Children()[0].(*gui.MenuButton)
+			model, command := menu.Menu(), menu.Menu().ItemAt(0).Command()
+			if !command.Checkable() || command.Checked() {
+				t.Fatal("声明没有发布初始勾选能力和值")
+			}
+			checked.Set(true)
+			fake.runPosted()
+			if !command.Checked() || builds != 1 || activations != 0 || menu.Menu() != model {
+				t.Fatal("状态绑定重建菜单、执行操作或没有局部发布")
+			}
+			input := &overlayInputWindow{testWindow: w}
+			if err := input.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: events.KeyF5}); err != nil {
+				t.Fatal(err)
+			}
+			fake.runPosted()
+			if activations != 1 || command.Checked() || checked.Get() || builds != 1 {
+				t.Fatalf("快捷键没有正确提交状态：activate=%d command=%v source=%v builds=%d", activations, command.Checked(), checked.Get(), builds)
+			}
+			source = &replacement
+			if err := rt.rebuild(); err != nil {
+				t.Fatal(err)
+			}
+			checked.Set(true)
+			if len(fake.posts) != 0 || !command.Checked() || menu.Menu() != model {
+				t.Fatal("换源后仍订阅旧值，或替换了菜单")
+			}
+			bound, direct = false, false
+			if err := rt.rebuild(); err != nil {
+				t.Fatal(err)
+			}
+			replacement.Set(false)
+			if len(fake.posts) != 0 || command.Checked() {
+				t.Fatal("Checked 没有替换旧绑定")
+			}
+			checkable = false
+			if err := rt.rebuild(); err != nil {
+				t.Fatal(err)
+			}
+			if command.Checkable() || command.Checked() || menu.Menu().ItemAt(0).Command() != command {
+				t.Fatal("恢复普通命令没有保留身份或清除状态")
+			}
+			rt.destroyAll()
+			checked.Set(false)
+			if len(fake.posts) != 0 || command.Enabled() {
+				t.Fatal("卸载后残留绑定或启用的操作")
+			}
+		})
+	}
+	value := MakeState(true)
+	if Command("toggle").BindChecked(&value).BindChecked(nil).Checked(false).checkedSource != nil {
+		t.Fatal("Checked 没有覆盖 BindChecked")
+	}
+}
+
+func TestCommandCheckedPublicationCanReleaseOwner(t *testing.T) {
+	r := newRoot()
+	defer r.unmountHost()
+	view := func(checkable, checked bool) *CommandGroupView {
+		return CommandGroup(MenuButton("Menu").Menu(MenuItem("Check").Command("toggle"))).Commands(Command("toggle").Checkable(checkable).Checked(checked))
+	}
+	button := r.update(view(false, false)).(*gui.MenuButton)
+	command := button.Menu().ItemAt(0).Command()
+	command.ConnectCheckable(func(bool) { r.unmountHost() })
+	r.update(view(true, true))
+	if command.Enabled() || command.Checked() {
+		t.Fatal("能力通知卸载宿主后继续发布了旧声明的勾选值")
+	}
+}
+
+func TestCommandCheckedBindingKeysDoNotCollideWithIDs(t *testing.T) {
+	checked, enabled := MakeState(false), MakeState(true)
+	_, fake := bindingApp(t, func() RootView {
+		return Window("main").Content(CommandGroup(MenuButton("Menu").Menu(
+			MenuItem("Check").Command("run"), MenuItem("Other").Command("run:checked"),
+		)).Commands(Command("run").Checkable(true).BindChecked(&checked), Command("run:checked").BindEnabled(&enabled)))
+	})
+	menu := fake.windows[0].Widget().(*gui.MenuButton).Menu()
+	checked.Set(true)
+	fake.runPosted()
+	if !menu.ItemAt(0).Command().Checked() || !menu.ItemAt(1).Command().Enabled() {
+		t.Fatal("勾选值绑定键与其他命令 ID 冲突")
+	}
+	enabled.Set(false)
+	fake.runPosted()
+	if !menu.ItemAt(0).Command().Checked() || menu.ItemAt(1).Command().Enabled() {
+		t.Fatal("可用性绑定覆盖了另一操作的勾选绑定")
+	}
+}
+
 func TestCommandDescendantLocalAddRemoveAndFallback(t *testing.T) {
 	show := MakeState(false)
 	global, local := 0, 0
@@ -507,10 +625,11 @@ func TestCommandBatchedPublicationCanUnmountScope(t *testing.T) {
 
 func TestCommandBindEnabledFollowsTransferredDefinition(t *testing.T) {
 	enabled := MakeState(true)
+	checked := MakeState(false)
 	rt, fake := bindingApp(t, func() RootView {
 		return Root().Windows(
 			Window("source").Content(CommandGroup(VBox(
-				VBox(MenuButton("Moving").Menu(MenuItem("Run").DefineCommand(Command("run").BindEnabled(&enabled)))).ID("moving"),
+				VBox(MenuButton("Moving").Menu(MenuItem("Run").DefineCommand(Command("run").BindEnabled(&enabled).Checkable(true).BindChecked(&checked)))).ID("moving"),
 			))),
 			Window("target").Content(CommandGroup(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))),
 		)
@@ -528,13 +647,15 @@ func TestCommandBindEnabledFollowsTransferredDefinition(t *testing.T) {
 	command := target.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command()
 	fake.windows[0].Destroy()
 	enabled.Set(false)
+	checked.Set(true)
 	fake.runPosted()
-	if command.Enabled() || moving.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command() != command {
+	if command.Enabled() || !command.Checkable() || !command.Checked() || moving.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command() != command {
 		t.Fatal("移交后绑定仍写旧作用域或因源窗口销毁失效")
 	}
 	enabled.Set(true)
+	checked.Set(false)
 	fake.runPosted()
-	if !command.Enabled() {
+	if !command.Enabled() || command.Checked() {
 		t.Fatal("移交后的绑定无法恢复")
 	}
 }

@@ -190,6 +190,25 @@ BindEnabled(ReadState[bool]) 复用承载节点的 BindValue、来源订阅和�
 替换值，nil 绑定不改变声明；换源、取消、卸载解除旧订阅。入口自身的 Enabled 独立于
 Command.Enabled，不因局部禁用而撤销命令定义。结构增删继续通过 Build 表达。
 
+CommandView 同时提供 Checkable(bool)、Checked(bool)、BindChecked(ReadState[bool])。
+Checkable 显式声明能力；Checked 和 BindChecked 是相互替换的状态来源，nil 绑定为
+无操作。沿用同一贡献、BindValue 和 AfterUpdate 发布路径，先设置能力再发布勾选值。
+仅绑定更新不重建父内容、菜单或命令对象，换源、取消及卸载解除旧订阅。移交后绑定
+继续跟随定义所属的新作用域，不重放激活。属性通知可能卸载或替换定义，后续发布须
+重新检查宿主和贡献有效性。
+
+```go
+ui.Command("view.line-numbers").
+    Checkable(true).
+    BindChecked(&showLineNumbers).
+    OnActivate(func() { showLineNumbers.Set(!showLineNumbers.Get()) })
+// MenuItem.Command("view.line-numbers") and Shortcut.Command(...) share it.
+```
+
+绑定方式下应用状态是真实来源，Command 向入口发布当前值；业务应修改绑定来源，
+避免后续声明重建覆盖一次孤立的命令式写入。CommandRef 继续只借用，UI 不更改外部
+命令的启用、勾选性质、勾选值或业务处理函数。
+
 显式移交重新确定定义的最近作用域及所有引用；本次移交全部 ancestry 安装并完成
 committed 回调后，借助既有 AfterTransfer 发布两侧集合，返回调用方前生效。
 移交整个 CommandGroup 保留其对象，移交定义至不同作用域由目标作用域拥有新对象，
