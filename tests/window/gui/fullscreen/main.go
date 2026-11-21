@@ -10,9 +10,12 @@
 //  2. View/Normal 退出：恢复普通窗口装饰、大小和位置；再进入全屏仍正常。
 //  3. 全屏中重复 Fullscreen、Show：保持全屏。Hide 后 Show 恢复显示。
 //  4. 最大化后进入全屏，再请求 Normal：得到普通窗口，不是恢复最大化。
-//  5. 全屏中 Minimized 后 Show 恢复全屏，再请求 Normal；快速 Fullscreen/Normal：
+//  5. Windows 全屏中直接请求 Maximized：尺寸和位置与普通窗口直接最大化相同；
+//     再请求 Normal 恢复初始位置和尺寸。观察切换瞬间，日志区分 REQUEST 与 STATE，
+//     并记录状态回调时的客户区位置和尺寸；最终状态通过不代表瞬间无闪烁。
+//  6. 全屏中 Minimized 后 Show 恢复全屏，再请求 Normal；快速 Fullscreen/Normal：
 //     最终状态与最后请求一致，不能因为重复 toggle 反向切换。
-//  6. 分别用三种 Chrome、1x/2x 重复；多屏时在各显示器重复并检查边缘退避。
+//  7. 分别用三种 Chrome、1x/2x 重复；多屏时在各显示器重复并检查边缘退避。
 //
 // -auto 在 GUI 线程请求状态并等待实际观察，独立查询原生屏幕/客户区核对
 // WorkAreaAt、Position(nil)、普通位置恢复、正常输入路径打开的菜单及
@@ -97,6 +100,7 @@ func run() error {
 	native := w.PlatformWindow().(platform.WindowManagement)
 	status := gui.NewLabel("View / Fullscreen, then open Short / Long")
 	request := func(state gui.WindowState) error {
+		fmt.Printf("REQUEST %v from=%v\n", state, w.State())
 		err := native.RequestState(state)
 		status.SetText(fmt.Sprintf("requested=%v observed=%v error=%v", state, w.State(), err))
 		return err
@@ -138,7 +142,9 @@ func run() error {
 	reverseOnFull := false
 	var reversalErr error
 	w.ConnectState(func(state gui.WindowState) {
-		fmt.Println("STATE", state)
+		pos, posErr := w.Position(nil)
+		_, size, sizeErr := nativeArea(w.PlatformWindow())
+		fmt.Printf("STATE %v position=%+v size=%+v queryErrors=%v/%v\n", state, pos, size, posErr, sizeErr)
 		if state == gui.WindowStateFullscreen {
 			fullEvents++
 			if reverseOnFull {
@@ -162,8 +168,27 @@ func run() error {
 	}
 	var initialPosition geometry.Point
 	var initialSize geometry.Size
+	var maximizedPosition geometry.Point
+	var maximizedSize geometry.Size
 	var steps []checkStep
 	state := func(s gui.WindowState) func() bool { return func() bool { return w.State() == s } }
+	checkRestored := func() error {
+		for _, b := range buttons {
+			b.Close()
+		}
+		pos, e := w.Position(nil)
+		if e != nil {
+			return e
+		}
+		_, size, e := nativeArea(w.PlatformWindow())
+		if e != nil {
+			return e
+		}
+		if !near(pos.X, initialPosition.X) || !near(pos.Y, initialPosition.Y) || !near(size.Width, initialSize.Width) || !near(size.Height, initialSize.Height) {
+			return fmt.Errorf("普通位置/尺寸恢复 got=%+v/%+v want=%+v/%+v", pos, size, initialPosition, initialSize)
+		}
+		return nil
+	}
 	checkFull := func() error {
 		want, _, e := nativeArea(w.PlatformWindow())
 		if e != nil {
@@ -236,27 +261,36 @@ func run() error {
 			return checkFull()
 		}})
 	}
-	addState("leave fullscreen", gui.WindowStateNormal, func() error {
-		for _, b := range buttons {
-			b.Close()
-		}
-		pos, e := w.Position(nil)
-		if e != nil {
-			return e
-		}
-		_, size, e := nativeArea(w.PlatformWindow())
-		if e != nil {
-			return e
-		}
-		if !near(pos.X, initialPosition.X) || !near(pos.Y, initialPosition.Y) || !near(size.Width, initialSize.Width) || !near(size.Height, initialSize.Height) {
-			return fmt.Errorf("普通位置/尺寸恢复 got=%+v/%+v want=%+v/%+v", pos, size, initialPosition, initialSize)
-		}
-		return nil
-	})
+	addState("leave fullscreen", gui.WindowStateNormal, checkRestored)
 	if runtime.GOOS != "darwin" || mode != gui.WindowChromeNone {
-		addState("maximize", gui.WindowStateMaximized, nil)
+		addState("maximize", gui.WindowStateMaximized, func() error {
+			maximizedPosition, err = w.Position(nil)
+			if err != nil {
+				return err
+			}
+			_, maximizedSize, err = nativeArea(w.PlatformWindow())
+			return err
+		})
 		addState("maximized to fullscreen", gui.WindowStateFullscreen, checkFull)
 		addState("fullscreen to ordinary", gui.WindowStateNormal, nil)
+		if runtime.GOOS == "windows" {
+			addState("fullscreen before maximize", gui.WindowStateFullscreen, checkFull)
+			addState("fullscreen directly to maximized", gui.WindowStateMaximized, func() error {
+				pos, e := w.Position(nil)
+				if e != nil {
+					return e
+				}
+				_, size, e := nativeArea(w.PlatformWindow())
+				if e != nil {
+					return e
+				}
+				if !near(pos.X, maximizedPosition.X) || !near(pos.Y, maximizedPosition.Y) || !near(size.Width, maximizedSize.Width) || !near(size.Height, maximizedSize.Height) {
+					return fmt.Errorf("直接最大化位置/尺寸 got=%+v/%+v want=%+v/%+v", pos, size, maximizedPosition, maximizedSize)
+				}
+				return nil
+			})
+			addState("ordinary after direct maximize", gui.WindowStateNormal, checkRestored)
+		}
 		addState("fullscreen before minimize", gui.WindowStateFullscreen, checkFull)
 		addState("fullscreen to minimized", gui.WindowStateMinimized, nil)
 		steps = append(steps, checkStep{"show minimized fullscreen", w.Show, state(gui.WindowStateFullscreen), checkFull})

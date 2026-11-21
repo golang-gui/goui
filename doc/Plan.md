@@ -1,5 +1,19 @@
 # Plan
 
+## Windows 全屏直接转最大化验证（2026-11-21）
+
+- [x] 扩展既有`tests/window/gui/fullscreen`，核对直接最大化与普通窗口最大化的
+  位置、尺寸一致，再还原时恢复初始普通位置；日志区分请求和实际状态及客户区几何。
+- [x] Windows 10、Direct2D、1×下，Native／Integrated／None三种Chrome的自动
+  场景全部通过，最终最大化及普通窗口恢复正确。
+- [x] 临时调用跟踪确认：GOUI只请求一次Maximized；中间普通尺寸状态发生在一次
+  `SetWindowPlacement(SW_SHOWMAXIMIZED)`内部，随后达到最大化。未发现额外的Normal
+  请求，本轮保持平台实现；不将最终状态检查等同于瞬间无闪烁。
+  [原生契约](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowplacement)
+  定义显示状态和位置设置，未承诺原子呈现；此实测结论限于上述Windows环境。
+- [x] 全仓`go test ./... -count=1`通过（6246项，无失败或条件跳过）；Linux/X11、
+  Xfwm4、OpenGL、1×原有自动场景通过，Windows／macOS目标编译通过（macOS未运行）。
+
 ## Demo 设置行的矢量箭头（2026-11-21）
 
 - [x] 将基础页可激活ListRow的尾部字符替换为16 DIP矢量Icon，资源在Demo初始化时
