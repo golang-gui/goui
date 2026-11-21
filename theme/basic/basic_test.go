@@ -40,6 +40,16 @@ func TestInlineTextPresetsArePartial(t *testing.T) {
 
 func TestCompleteFallbackTextAndStates(t *testing.T) {
 	sheet := Sheet()
+	for _, state := range []style.State{style.Normal, style.Checked | style.Hovered, style.Checked | style.Disabled} {
+		fg, ok := sheet.Resolve(style.Sel{Name: "menu-item", Part: "indicator", State: state}).ForegroundColor()
+		want := color.Color(color.Black)
+		if state.Has(style.Disabled) {
+			want = color.RGBA{R: 160, G: 160, B: 160, A: 255}
+		}
+		if !ok || !colors.Equal(fg, want) {
+			t.Fatalf("菜单勾号兜底颜色错误：state=%v color=%v", state, fg)
+		}
+	}
 	wantFamily := ""
 	switch runtime.GOOS {
 	case "linux":

@@ -160,6 +160,36 @@ Enabled 仍表示入口自身值，绘制、导航、点击与 Snapshot 另组�
 空格或 Tab 作为布局语法。默认提示从 Command.Shortcuts 中首个有效 Gesture 获取。
 保持 160 DIP 最小主体和既有工作区／滚动限制，详见 [DesignCommand](DesignCommand.md)。
 
+## 可勾选菜单项（2026-11-21）
+
+菜单项通过 `SetCommand` 引用 `Checkable=true` 的 Command 获得勾选外观；MenuItem
+不另存 Checkable／Checked，也不提供第二套值修改或业务回调。普通 Action 项保持
+原有语义。菜单点击、Enter／Space 和快捷键只激活共享操作，**不自动切换勾选**。
+业务处理函数决定并提交实际值；拒绝、失败或尚未完成时不发布新值。菜单仍先隐藏、
+释放模态输入并重新核验目标，再调用业务。程序发布状态不激活操作。
+
+同一菜单内，只要存在一个可见且非分隔的可勾选项，所有普通行统一预留左侧
+16 DIP 指示区和 8 DIP 间距。禁用项参与，隐藏项不参与，分隔线不受影响；没有
+可勾选项时保留原来的布局。Checked 值改变只更新绘制与语义，不改变列宽、模型或
+当前导航项；Checkable 能力变化重新测量。受工作区约束时继续按原规则压缩文字。
+
+勾号由 Painter 绘制，不使用字体字符或嵌套 CheckButton。`menu-item` 的 `indicator`
+Part 控制指示区背景、边框和前景色，Basic 提供明确兜底，Modern 随明暗与禁用状态
+调整颜色；固定指示区尺寸属于控件布局，样式不改变其大小。行的 `style.Checked`
+反映实际值，`Selected` 仍表示当前指针／键盘导航项，二者可组合。
+
+Snapshot 使用 `RoleMenuItemCheckbox`，`MenuItemInfo` 增加 `Checkable`／`Checked`；
+保留整行的边界、Enabled 和 Click 动作，不为装饰勾号增加交互节点。
+菜单显示期间去重观察 Command 的能力和值；隐藏、显示失败、卸载或销毁时解除。
+虚拟行 Bind／Unbind 清理旧投影，重新绑定时从 Command 读取当前值，避免复用污染。
+
+声明式仍使用 MenuItem.Command／DefineCommand／CommandRef，状态由普通 Command
+声明的 `.Checkable(true).Checked(value)` 或 `.BindChecked(source)` 提供。
+同一作用域的菜单与快捷键共享对象，外部 CommandRef 只借用；详细示例与 GIO／Qt
+官方契约参考见 [共享勾选状态设计](DesignCommand.md#共享勾选状态与显式提交2026-11-21)。
+
+## 声明式命令接入
+
 UI 的 Window 自动提供默认 CommandGroup，可通过 Window.Commands 或局部 Group.Commands
 集中提供普通 Command 声明值，
 也可在 MenuButton 的 MenuItem.DefineCommand 或后代 Shortcut.DefineCommand 中提供并

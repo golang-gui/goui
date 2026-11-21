@@ -161,24 +161,25 @@ type TextPreeditInfo struct {
 type Role string
 
 const (
-	RoleWidget        Role = "widget"
-	RoleBox           Role = "box"
-	RoleHBox          Role = "hbox"
-	RoleVBox          Role = "vbox"
-	RoleWrapBox       Role = "wrapbox" // ordered wrapping container, not a selectable grid
-	RoleLabel         Role = "label"
-	RoleTooltip       Role = "tooltip"
-	RoleButton        Role = "button"
-	RoleImage         Role = "image"
-	RoleTextInput     Role = "textinput"
-	RoleTextView      Role = "textview"
-	RoleScrollView    Role = "scrollview" // scrollable container (WAI-ARIA: scrollbar host)
-	RoleScrollBar     Role = "scrollbar"  // scrollbar control (WAI-ARIA: scrollbar)
-	RoleList          Role = "list"       // virtualized list (WAI-ARIA: list)
-	RoleListItem      Role = "listitem"   // list row (WAI-ARIA: listitem)
-	RoleMenu          Role = "menu"
-	RoleMenuItem      Role = "menuitem"
-	RoleMenuSeparator Role = "menuseparator"
+	RoleWidget           Role = "widget"
+	RoleBox              Role = "box"
+	RoleHBox             Role = "hbox"
+	RoleVBox             Role = "vbox"
+	RoleWrapBox          Role = "wrapbox" // ordered wrapping container, not a selectable grid
+	RoleLabel            Role = "label"
+	RoleTooltip          Role = "tooltip"
+	RoleButton           Role = "button"
+	RoleImage            Role = "image"
+	RoleTextInput        Role = "textinput"
+	RoleTextView         Role = "textview"
+	RoleScrollView       Role = "scrollview" // scrollable container (WAI-ARIA: scrollbar host)
+	RoleScrollBar        Role = "scrollbar"  // scrollbar control (WAI-ARIA: scrollbar)
+	RoleList             Role = "list"       // virtualized list (WAI-ARIA: list)
+	RoleListItem         Role = "listitem"   // list row (WAI-ARIA: listitem)
+	RoleMenu             Role = "menu"
+	RoleMenuItem         Role = "menuitem"
+	RoleMenuItemCheckbox Role = "menuitemcheckbox"
+	RoleMenuSeparator    Role = "menuseparator"
 )
 
 type Action string
