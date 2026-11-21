@@ -34,6 +34,96 @@ func TestCommandActivationAndEnabledNotifications(t *testing.T) {
 	}
 }
 
+func TestCommandCheckedStatePublication(t *testing.T) {
+	c := NewCommand()
+	activations := 0
+	c.ConnectActivate(func() { activations++ })
+	var capabilities, values []bool
+	c.ConnectCheckable(func(v bool) {
+		if c.Checkable() != v || !v && c.Checked() {
+			t.Fatal("能力通知前没有提交完整状态")
+		}
+		capabilities = append(capabilities, v)
+	})
+	c.ConnectChecked(func(v bool) {
+		if c.Checked() != v {
+			t.Fatal("通知值不是已提交状态")
+		}
+		values = append(values, v)
+	})
+	c.SetChecked(true)
+	if c.Checkable() || c.Checked() || len(values) != 0 {
+		t.Fatal("普通操作被隐式转为勾选操作")
+	}
+	c.SetCheckable(true)
+	c.SetCheckable(true)
+	c.Activate()
+	if c.Checked() || activations != 1 {
+		t.Fatal("激活隐式切换了勾选值")
+	}
+	c.SetEnabled(false)
+	c.SetChecked(true)
+	c.SetChecked(true)
+	c.Activate()
+	c.SetCheckable(false)
+	c.SetChecked(true)
+	if activations != 1 || c.Checkable() || c.Checked() || !slices.Equal(capabilities, []bool{true, false}) || !slices.Equal(values, []bool{true, false}) {
+		t.Fatalf("发布或清除状态错误：activate=%d capabilities=%v checked=%v", activations, capabilities, values)
+	}
+}
+
+func TestCommandCheckedReentrancyAndActivation(t *testing.T) {
+	c := NewCommand()
+	c.SetCheckable(true)
+	var seen []bool
+	c.ConnectChecked(func(v bool) {
+		if v {
+			c.SetChecked(false)
+		}
+	})
+	c.ConnectChecked(func(v bool) { seen = append(seen, v) })
+	c.SetChecked(true)
+	if c.Checked() || !slices.Equal(seen, []bool{false}) {
+		t.Fatal("重入后仍通知旧勾选值", seen)
+	}
+	c = NewCommand()
+	c.SetCheckable(true)
+	c.SetChecked(true)
+	var checks []bool
+	c.ConnectCheckable(func(v bool) {
+		if !v {
+			c.SetCheckable(true)
+			c.SetChecked(true)
+		}
+	})
+	c.ConnectChecked(func(v bool) { checks = append(checks, v) })
+	c.SetCheckable(false)
+	if !c.Checkable() || !c.Checked() || !slices.Equal(checks, []bool{true}) {
+		t.Fatal("能力变更重入后补发了旧 Checked=false", checks)
+	}
+	c = NewCommand()
+	c.SetCheckable(true)
+	first, second := 0, 0
+	c.ConnectActivate(func() { first++; c.SetChecked(!c.Checked()) })
+	c.ConnectActivate(func() { second++ })
+	c.Activate()
+	if first != 1 || second != 1 || !c.Checked() {
+		t.Fatal("状态发布取消了同一次激活的后续回调")
+	}
+	c = NewCommand()
+	c.ConnectCheckable(func(v bool) {
+		if v {
+			c.SetChecked(true)
+		}
+	})
+	capabilityNotified := false
+	c.ConnectCheckable(func(v bool) { capabilityNotified = v })
+	c.SetCheckable(true)
+	if !capabilityNotified || !c.Checked() {
+		t.Fatal("发布勾选值错误地取消了能力通知")
+	}
+}
+
 func TestCommandShortcutAssociations(t *testing.T) {
 	a, b := NewCommand(), NewCommand()
 	changesA, changesB := 0, 0
