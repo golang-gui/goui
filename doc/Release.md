@@ -239,9 +239,27 @@ Linux 若仅原生版本元数据变化，重建文件可能相同，应如实�
 
 ## 5. macOS 正式签名、公证与归档
 
-本节在有 Developer ID 证书私钥及已配置公证凭据的 Mac 执行。
-Linux 到 Mac 的输入传输、最终 ZIP 的回传均校验 SHA256；使用独立临时目录。
-以下变量属于 Mac shell，不能直接沿用 Linux 机器的路径：
+签名与公证有两条显式路径：跨平台 PKCS#12／Notary REST，或下述 macOS
+钥匙串／Apple 工具。两条路径均须在 macOS 验收最终 ZIP 解压产物；传递中间产物
+与最终 ZIP 时校验 SHA256，使用独立临时目录。
+
+跨平台路径的配置与支持范围见[分发设计](DesignMacOSDistribution.md)：
+
+```bash
+goui package -config example/demo/goui.toml -target darwin/arm64 -format app
+goui notarize -config example/demo/goui.toml -app "<已签名的 .app>" -o "<本轮收据.json>" -wait
+# 超时后使用已保存 ID 续查，先检查 history，不能盲目重新提交。
+goui notarize -config example/demo/goui.toml -submission "<本轮 ID>" -o "<本轮收据.json>" -wait
+goui staple -config example/demo/goui.toml -app "<同一个 .app>"
+goui archive -config example/demo/goui.toml -app "<已装订的 .app>" -o "<最终 ZIP>"
+```
+
+仅在配置了正式 Developer ID PKCS#12 和 Notary API 团队密钥时使用该路径；
+不得把合成证书测试或 Apple 工具的成功当作 REST 正式认证验收。当前 REST 正式
+认证与上传仍待具备团队 API 密钥的发行验收；此前正式发布继续使用已验收的
+钥匙串路径。
+
+以下变量属于 macOS shell：
 
 ```bash
 set -euo pipefail
@@ -257,9 +275,9 @@ app="$mac_release_dir/GOUI Demo.app"
 ### 5.1 签名
 
 正式直分发使用 Developer ID Application，不使用 Apple Development 或 ad-hoc。
-当前 `cmd/goui` 内置签名使用 `--timestamp=none`，且不自动开启 Hardened Runtime，
-不能直接作为本流程的公证签名；此处须显式重新签名。未来工具若改进，应先核对
-实现与回归结果再更新流程，不默认已经支持。
+`cmd/goui` 的 PKCS#12 路径已强制开启 runtime 与安全时间戳，不再用系统工具
+重签。原 `macos.signing_identity` 路径保留开发用途的 `--timestamp=none` 语义，
+使用该路径正式分发时，须按以下步骤明确重新签名。
 
 ```bash
 /usr/bin/security find-identity -v -p codesigning
@@ -297,12 +315,10 @@ submission_id='<本轮已返回的 submission ID>'
 不要盲目重复上传。状态为 Accepted 才继续；Invalid 时用 notarytool log 获取该任务
 诊断，不用旧任务的 Accepted 代替本轮结果。公证不等于 App Store 审核。
 
-GUI 已解锁钥匙串但 SSH 仍拒绝访问时，先区分安全会话，不反复要求用户解锁，
-也不据此认定用户解锁了错误账户。允许使用 remote-computer-use 在已授权的
-桌面 Terminal 执行签名／公证，remote-shell 只传输文件和读取日志。
-使用已有 profile 所在的凭据存储，不盲目增加 `--keychain` 指向另一个存储。
-不自动导出私钥、修改钥匙串访问控制、重建凭据或降低系统安全策略；密码不进入
-命令行、脚本、截图或日志。新建凭据由用户在安全的交互会话完成。
+钥匙串访问受安全会话约束；使用已有 profile 所在的凭据存储，不盲目增加
+`--keychain` 指向另一个存储。不自动导出私钥、修改访问控制、重建凭据或降低
+系统安全策略；密码不进入命令行、脚本、截图或日志。需要用户认证时，由用户
+在本机安全交互会话完成。
 
 ### 5.3 装订并检查最终 ZIP
 
@@ -330,7 +346,7 @@ test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$verified_app/Conte
 ```
 
 核对版本为本轮值，Gatekeeper 为 accepted / Notarized Developer ID，并以解压后的
-app 完成启动验收。最终 ZIP 字节回传汇总主机，不在 Linux 解压重打包。
+app 完成窗口操作验收。最终 ZIP 使用本轮已验证的归档字节，不另行解压重打包。
 签名后不得再修改 plist、二进制或受签名保护资源；发生修改就重新签名、公证和验证。
 
 ## 6. 附件与说明

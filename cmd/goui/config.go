@@ -35,6 +35,11 @@ type config struct {
 			PKCS12      string `toml:"pkcs12"`
 			PasswordEnv string `toml:"password_env"`
 		} `toml:"signing"`
+		Notary struct {
+			PrivateKey string `toml:"private_key"`
+			KeyID      string `toml:"key_id"`
+			IssuerID   string `toml:"issuer_id"`
+		} `toml:"notary"`
 	} `toml:"macos"`
 	Linux struct {
 		Categories []string `toml:"categories"`

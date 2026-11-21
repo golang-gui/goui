@@ -1,5 +1,37 @@
 # Plan
 
+## macOS 跨平台分发（2026-11-21）
+
+- [x] 写入[分发设计](DesignMacOSDistribution.md)，明确共享签名、Developer ID
+  策略、显式公证续查、票据装订、ZIP 权限与原生验收边界。
+- [x] 抽取 iOS 共用的 PKCS#12／Mach-O／CMS／验签，实现 macOS 资源密封、
+  Hardened Runtime 和 Apple 安全时间戳；保留现有钥匙串签名入口。
+- [x] 实现 Notary REST JWT、S3 上传、状态／日志续查和任务收据；未知结果保留
+  收据并要求先查 history，不自动重新上传。协议与失败路径使用合成服务验证。
+- [x] 验证 Apple 票据签名、证书角色、链与 cdhash 后装订；ZIP 显式保存 Unix
+  权限和票据，拒绝覆盖已有输出或写入输入 Bundle 内部。
+- [x] Linux 生成的合成代码签名配合真实 Apple 时间戳，在 macOS 15.7.7 arm64
+  通过系统严格验签；共用签名器生成的 iOS fixture 通过系统验签。合成身份不作为
+  正式 Developer ID、设备安装或分发验收的证据。
+- [x] 以正式 v0.8.1 Demo 作为独立参考，Linux 工具重新获取／验证／装订票据，
+  生成 ZIP 后在 macOS 解压，通过严格验签、stapler validate、Gatekeeper
+  `accepted / Notarized Developer ID`；此项不等同于新签名器已完成正式公证。
+- [x] `go test -json ./... -count=1`：6261 项通过，无失败或条件跳过；最终修改后
+  `go test ./...`、命令包 race／vet、`go mod verify` 和 Windows／macOS 工具编译通过。
+- [x] 新签名器通过本机正式 Developer ID 的受控签名回调完成签名，不导出私钥或
+  修改访问控制；macOS 原生严格验签、runtime、安全时间戳与指定要求通过。
+  其 Linux ZIP 经既有 notarytool 路径提交后，公证任务
+  `f1a0fef4-5100-43ec-89aa-dd1604a85ada` 为 Accepted；Linux 再装订、归档，
+  最终 ZIP 在 macOS 解压后的严格验签、票据与 Gatekeeper 均通过。
+  最终 ZIP 的窗口启动、按钮激活、文本编辑、下拉菜单与页面切换通过；
+  macOS 15.7.7 arm64／OpenGL／应用默认 1×；关闭按钮使窗口与进程退出，
+  未取得进程退出码。
+- [ ] Notary REST 正式团队密钥认证／上传、正式 PKCS#12 全流程尚无可用材料，
+  目前仅完成协议与合成身份验证。既有 notarytool 凭据和正式公证历史已确认可用，
+  不能将其替代为 REST 正式认证通过。
+- [ ] Windows 原生 NTFS 归档与签名运行未执行；验证环境不可用，保留为验收缺口，
+  不将目标编译当作原生通过。
+
 ## Windows 全屏直接转最大化验证（2026-11-21）
 
 - [x] 扩展既有`tests/window/gui/fullscreen`，核对直接最大化与普通窗口最大化的
