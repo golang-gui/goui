@@ -9,6 +9,7 @@
 ## 职责
 
 Command 是 GUI 线程上的共享操作，负责激活、Enabled、关联 Shortcut 的只读查询及通知。
+可选的 Checkable／Checked 表示操作发布的布尔状态，文案、图标和样式仍属于入口。
 Shortcut 拥有 Gesture、自身 Enabled、重复策略和 Command 关联；Controller 负责作用域与输入传播。
 MenuItem 拥有标题、可见性和自身 Enabled，引用 Command；PopoverMenu 管理显示期间的观察和列布局。
 Button 保持普通回调，不增加 CommandButton，不修改 WidgetBase 或平台层。
@@ -20,6 +21,12 @@ func NewCommand() *Command
 func (*Command) Enabled() bool
 func (*Command) SetEnabled(bool)
 func (*Command) ConnectEnabled(func(bool)) signal.Handle
+func (*Command) Checkable() bool
+func (*Command) SetCheckable(bool)
+func (*Command) ConnectCheckable(func(bool)) signal.Handle
+func (*Command) Checked() bool
+func (*Command) SetChecked(bool)
+func (*Command) ConnectChecked(func(bool)) signal.Handle
 func (*Command) Activate()
 func (*Command) ConnectActivate(func()) signal.Handle
 func (*Command) Shortcuts() []*Shortcut
@@ -45,6 +52,40 @@ MenuItem 保留 Action／SetAction 与 Command／SetCommand；后设置的来源
 清空不恢复旧来源。Enabled getter 始终是自身值。实际交互为自身、祖先与 Command 的
 限制组合，局部禁用不写回 Command。执行前保存来源，Hide 后再确认目标和有效性，
 保持释放模态输入后执行业务的顺序。
+
+## 共享勾选状态与显式提交（2026-11-21）
+
+Command 默认 Checkable=false、Checked=false。SetCheckable(true) 开启布尔状态，
+SetChecked 仅在 Checkable=true 时生效，不隐式改变操作性质。SetCheckable(false)
+同时清除 Checked；完整状态先提交，再依次通知能力及实际改变的值。不变值不通知。
+禁用只阻止激活，业务仍可发布真实状态；程序 setter 不执行 Activate。
+
+Activate 保留单一业务入口，**不会自动切换 Checked**。菜单、快捷键及其他入口均调用
+同一操作，由处理函数修改业务并 SetChecked(actual)。拒绝或失败时不提交新值；异步
+结果确定后再提交，期间是否禁用由应用决定。不提供第二套 Toggle／ChangeRequest
+执行路径，也不要求菜单查找或驱动某个快捷键。
+
+```go
+toggle := gui.NewCommand()
+toggle.SetCheckable(true)
+toggle.SetChecked(true)
+toggle.ConnectActivate(func() {
+    toggle.SetChecked(!toggle.Checked())
+})
+menu.Append("Show line numbers", nil).SetCommand(toggle)
+```
+
+ConnectChecked／ConnectCheckable 是实际状态通知，包含程序发布，不是用户请求。
+每种属性分别识别过期通知：回调重新发布同一属性后，不继续发送旧值；发布 Checked
+不取消尚有效的 Checkable 通知。状态修订与激活有效性分离，在业务处理函数内提交
+勾选结果不会取消本次激活的其余监听者；原有 Enabled 失效规则保持不变。
+
+采用共享状态及业务显式提交，是对 [GIO MenuModel 布尔状态](https://docs.gtk.org/gio/class.MenuModel.html)
+和 [SimpleAction.change-state](https://docs.gtk.org/gio/signal.SimpleAction.change-state.html)
+的取舍：菜单观察操作状态，业务可决定是否接受。GIO 的默认切换规则不照搬；
+[Qt Quick Controls 6.8 Action](https://doc.qt.io/qt-6.8/qml-qtquick-controls-action.html)
+可统一菜单／工具栏／快捷键，但其自动切换与文案、图标承载不纳入 GOUI Command。
+这些是官方契约参考；GOUI 不引入 GVariant、属性系统或新的命令类型。
 
 GUI 所有者不再使用 Shortcut 时用 SetCommand(nil) 解除反向引用。Controller.Remove
 只移除当前注册，不影响其他 Controller。窗口或菜单不销毁外部命令。
