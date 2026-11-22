@@ -278,7 +278,7 @@ ScrollView、TableView 和第三方宿主也不登记组成员。通用协调契
 ui.HBox(
     ui.ScrollView(content).ID("content").
         VScrollBarOptions(ui.ScrollBarOptions{Policy: ui.ScrollBarHidden}),
-    ui.ScrollBar(layout.DirectionVertical).Target("content").Thickness(14).ThumbThickness(8),
+    ui.ScrollBar(layout.DirectionVertical, "content").Thickness(14).ThumbThickness(8),
 ).Spacing(6)
 ```
 

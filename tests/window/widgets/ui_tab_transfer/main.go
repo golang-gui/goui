@@ -431,7 +431,7 @@ func main() {
 				p.ID("input-" + key)
 				pages = append(pages, wui.TabPage(key, p).Title("Document "+key))
 			}
-			bar := wui.TabBar().Target("documents").ID("tab-bar").Reorderable(true).Transferable(true).OnTransferError(fail).OnDetachRequest(detach)
+			bar := wui.TabBar("documents").ID("tab-bar").Reorderable(true).Transferable(true).OnTransferError(fail).OnDetachRequest(detach)
 			var heading ui.View = bar
 			if *chrome == "integrated" {
 				heading = ui.HeaderBar(bar).Padding(6)

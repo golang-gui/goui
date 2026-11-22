@@ -17,9 +17,9 @@ ScrollView 内置条已逐轴提供 HScrollBarOptions / VScrollBarOptions，区�
 表头接缝与交汇角，保留手动列宽和基础宽度，不再猜测固定厚度。
 交汇角通过独立corner Part装饰：普通滚动容器默认透明，TableView主题显式保留轨道底色。
 ScrollBarClient／BindScrollBar 支持非 Widget 控制端；PageSize 与轨道长度独立，
-TableView 薄转发绑定。声明式 ScrollBar.Target(id) 使用协调层持久引用，覆盖目标
+TableView 薄转发绑定。声明式 ScrollBar(axis, id) 使用协调层持久引用，覆盖目标
 缺失／局部替换、Root 隔离及移交；宿主不登记组成员，不引入独立滚动模型。
-外部对象不归宿主布局／销毁，不进入表格包络。TabBar().Target(id) 复用同一机制；
+外部对象不归宿主布局／销毁，不进入表格包络。TabBar(id) 复用同一机制；
 Group 保留显式声明及成员默认来源，CommandScope 表达默认与局部命令范围。
 完整设计见 [DesignScrollBars](DesignScrollBars.md)，进度与验证范围见
 [Plan](Plan.md#targetgroup-与-scope2026-11-22)。

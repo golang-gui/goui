@@ -55,18 +55,18 @@ type tabTestNode struct {
 
 func TestTabBarWidthRangeReconcilesAndResets(t *testing.T) {
 	c := new(tabContext)
-	v := TabBar().Target("documents").TabWidthRange(120, 240)
+	v := TabBar("documents").TabWidthRange(120, 240)
 	bar := v.Mount(c).(*widgets.TabBar)
 	v.Update(c, bar)
 	if minimum, maximum := bar.TabWidthRange(); minimum != 120 || maximum != 240 {
 		t.Fatalf("custom range not applied: %g..%g", minimum, maximum)
 	}
-	v = TabBar().Target("documents").TabWidthRange(180, 180)
+	v = TabBar("documents").TabWidthRange(180, 180)
 	v.Update(c, bar)
 	if minimum, maximum := bar.TabWidthRange(); minimum != 180 || maximum != 180 {
 		t.Fatal("fixed-width update not applied")
 	}
-	v = TabBar().Target("documents")
+	v = TabBar("documents")
 	v.Update(c, bar)
 	if minimum, maximum := bar.TabWidthRange(); minimum != 112 || maximum != 240 {
 		t.Fatal("omission retained stale width range")
@@ -257,7 +257,7 @@ func requestTabMenu(t *testing.T, bar *widgets.TabBar) {
 func TestTabBarContextMenuUsesLatestBuilderAndDisconnects(t *testing.T) {
 	ctx := new(tabContext)
 	builds, actions := 0, 0
-	declaration := TabBar().Target("documents").ContextMenu(func(id string) []*baseui.MenuItemView {
+	declaration := TabBar("documents").ContextMenu(func(id string) []*baseui.MenuItemView {
 		builds++
 		return []*baseui.MenuItemView{baseui.MenuItem("Old "+id, func() { actions++ })}
 	})
@@ -281,7 +281,7 @@ func TestTabBarContextMenuUsesLatestBuilderAndDisconnects(t *testing.T) {
 		t.Fatal("first input did not build exactly one target-specific menu")
 	}
 	old := menu
-	declaration = TabBar().Target("documents").ContextMenu(func(id string) []*baseui.MenuItemView {
+	declaration = TabBar("documents").ContextMenu(func(id string) []*baseui.MenuItemView {
 		builds++
 		return []*baseui.MenuItemView{baseui.MenuItem("New "+id, func() { actions += 10 }), baseui.MenuSeparator()}
 	})
@@ -297,7 +297,7 @@ func TestTabBarContextMenuUsesLatestBuilderAndDisconnects(t *testing.T) {
 	if actions != 10 {
 		t.Fatal("newly opened menu retained old action")
 	}
-	declaration = TabBar().Target("documents")
+	declaration = TabBar("documents")
 	declaration.Update(ctx, bar)
 	requestTabMenu(t, bar)
 	if menu != nil || builds != 2 {
@@ -305,7 +305,7 @@ func TestTabBarContextMenuUsesLatestBuilderAndDisconnects(t *testing.T) {
 	}
 	// Restore a builder, then unmount and rebind the imperative bar: the
 	// disconnected declaration must not build another menu.
-	declaration = TabBar().Target("documents").ContextMenu(func(string) []*baseui.MenuItemView {
+	declaration = TabBar("documents").ContextMenu(func(string) []*baseui.MenuItemView {
 		builds++
 		return []*baseui.MenuItemView{baseui.MenuItem("unmounted", nil)}
 	})
@@ -322,7 +322,7 @@ func TestTabBarContextMenuUsesLatestBuilderAndDisconnects(t *testing.T) {
 func TestTabBarContextMenuErrorBindingUpdatesAndDisconnects(t *testing.T) {
 	ctx := new(tabContext)
 	first, second := 0, 0
-	declaration := TabBar().Target("documents").OnContextMenuError(func(error) { first++ })
+	declaration := TabBar("documents").OnContextMenuError(func(error) { first++ })
 	bar := declaration.Mount(ctx).(*widgets.TabBar)
 	declaration.Update(ctx, bar)
 	view := widgets.NewTabView()
@@ -337,7 +337,7 @@ func TestTabBarContextMenuErrorBindingUpdatesAndDisconnects(t *testing.T) {
 	bar.Measure(layout.Loose(geometry.Size{Width: 200, Height: 40}))
 	bar.Arrange(geometry.Rect(0, 0, 200, 40))
 	requestTabMenu(t, bar) // unmounted anchor: deterministic error, no desktop
-	declaration = TabBar().Target("documents").OnContextMenuError(func(error) { second++ })
+	declaration = TabBar("documents").OnContextMenuError(func(error) { second++ })
 	declaration.Update(ctx, bar)
 	requestTabMenu(t, bar)
 	if first != 1 || second != 1 {
@@ -362,7 +362,7 @@ func TestTabBarContextMenuDeclarationsAreIndependentForSharedView(t *testing.T) 
 	var menus [2]gui.MenuModel
 	for i := range bars {
 		ctx := new(tabContext)
-		declaration := TabBar().Target("documents").ContextMenu(func(id string) []*baseui.MenuItemView {
+		declaration := TabBar("documents").ContextMenu(func(id string) []*baseui.MenuItemView {
 			if id != "page" {
 				t.Fatalf("unexpected page ID %q", id)
 			}

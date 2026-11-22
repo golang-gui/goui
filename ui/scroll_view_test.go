@@ -197,8 +197,8 @@ func TestScrollTargetReusesBindingsAndIndependentLayout(t *testing.T) {
 	build := func() View {
 		return HBox(
 			ScrollView(scrollTargetImage(1000)).ID("source").HScrollBarOptions(ScrollBarOptions{Policy: ScrollBarHidden}).VScrollBarOptions(ScrollBarOptions{Policy: ScrollBarHidden}),
-			ScrollBar(layout.DirectionVertical).Target("source").Thickness(14).ThumbThickness(6).MaxSize(14, 100).Style("external"),
-			ScrollBar(layout.DirectionVertical).Target("source"),
+			ScrollBar(layout.DirectionVertical, "source").Thickness(14).ThumbThickness(6).MaxSize(14, 100).Style("external"),
+			ScrollBar(layout.DirectionVertical, "source"),
 		).Spacing(6).CrossAlign(layout.CrossStart)
 	}
 	widget := r.update(build())
@@ -247,7 +247,7 @@ func TestScrollTargetLocalHostReplacement(t *testing.T) {
 				}
 				return Modify(ScrollView(scrollTargetImage(1000)).ID(fmt.Sprintf("source-%d", v))).ID("source")
 			}),
-			ScrollBar(layout.DirectionVertical).Target("source").ID("external"),
+			ScrollBar(layout.DirectionVertical, "source").ID("external"),
 		).CrossAlign(layout.CrossStretch))
 	})
 	host := rt.windows["main"].host
@@ -291,10 +291,11 @@ func TestScrollTargetIsolationAndAmbiguity(t *testing.T) {
 	r := newRoot()
 	defer r.update(nil)
 	root := r.update(VBox(
-		ScrollBar(layout.DirectionVertical),
+		ScrollBar(layout.DirectionVertical, "first").Target(""),
 		VBox(
-			ScrollView(scrollTargetImage(1000)).ID("first"), ScrollBar(layout.DirectionVertical).Target("first"),
-			VBox(ScrollView(scrollTargetImage(800)).ID("second"), ScrollBar(layout.DirectionVertical).Target("second")),
+			ScrollView(scrollTargetImage(1000)).ID("first"), ScrollBar(layout.DirectionVertical, "").Target("first"),
+			// 构造参数先指向 first，链式声明应改为 second，而不串联两个宿主。
+			VBox(ScrollView(scrollTargetImage(800)).ID("second"), ScrollBar(layout.DirectionVertical, "first").Target("second")),
 		),
 	))
 	outer := root.Children()[1]
@@ -313,7 +314,7 @@ func TestScrollTargetIsolationAndAmbiguity(t *testing.T) {
 				t.Fatal("重复目标 ID 没有报告歧义")
 			}
 		}()
-		r.update(VBox(VBox(ScrollView(nil).ID("same")), VBox(ScrollView(nil).ID("same")), ScrollBar(layout.DirectionVertical).Target("same")))
+		r.update(VBox(VBox(ScrollView(nil).ID("same")), VBox(ScrollView(nil).ID("same")), ScrollBar(layout.DirectionVertical, "same")))
 	}()
 }
 
@@ -323,7 +324,7 @@ func TestScrollTargetHostTransfer(t *testing.T) {
 	defer b.update(nil)
 	view := ScrollView(scrollTargetImage(1000)).ID("moved")
 	source := a.update(VBox(view)).(*gui.LinearBox)
-	target := b.update(VBox(ScrollBar(layout.DirectionVertical).Target("moved"))).(*gui.LinearBox)
+	target := b.update(VBox(ScrollBar(layout.DirectionVertical, "moved"))).(*gui.LinearBox)
 	sv := source.Children()[0].(*gui.ScrollView)
 	bar := target.Children()[0].(*gui.ScrollBar)
 	coordinator := &Coordinator{owner: findNode(a.root, source)}
@@ -348,7 +349,7 @@ func TestScrollTargetLocalBarAxisChange(t *testing.T) {
 	rt, fake := bindingApp(t, func() RootView {
 		return Window("main").Content(HBox(
 			ScrollView(scrollTargetImage(1000)).ID("source"),
-			Build(func() View { return ScrollBar(axis.Get()).Target("source").ID("bar") }),
+			Build(func() View { return ScrollBar(axis.Get(), "source").ID("bar") }),
 		).CrossAlign(layout.CrossStretch))
 	})
 	host := rt.windows["main"].host
@@ -375,7 +376,7 @@ func TestScrollTargetSubtreeTransferPreservesConnection(t *testing.T) {
 	a, b := transferRoots()
 	defer a.update(nil)
 	defer b.update(nil)
-	source := a.update(VBox(HBox(ScrollView(scrollTargetImage(1000)).ID("source"), ScrollBar(layout.DirectionVertical).Target("source")).ID("pair"))).(*gui.LinearBox)
+	source := a.update(VBox(HBox(ScrollView(scrollTargetImage(1000)).ID("source"), ScrollBar(layout.DirectionVertical, "source")).ID("pair"))).(*gui.LinearBox)
 	target := b.update(VBox()).(*gui.LinearBox)
 	subtree := source.Children()[0]
 	sv := subtree.Children()[0].(*gui.ScrollView)
