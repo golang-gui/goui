@@ -514,7 +514,7 @@ ID 不能为空，Surface 与 Window 共用应用内的宿主 ID 命名空间。
 不能在不支持 WindowSource 的平台创建假窗口或静默忽略。
 
 内容继续使用现有 root/node 协调与批次调度；把 root 的挂载对象收敛为 gui.Surface，
-窗口与 Surface 仅保留各自创建/管理/信号胶水。默认 CommandGroup 和快捷键绑定共享，
+窗口与 Surface 仅保留各自创建/管理/信号胶水。默认 CommandScope 和快捷键绑定共享，
 所有根更新完成后再执行 AfterUpdate，之后仅对新管理窗口 Show。ComposeView 的自动
 状态依赖与属性绑定仍沿既有路径，不因增加宿主建立另一份更新循环。
 

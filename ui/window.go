@@ -104,9 +104,9 @@ func (w WindowView) Content(content View) WindowView {
 	return w
 }
 
-// Commands declares operations in this window's default command group. The
-// content and Window.Shortcuts share that group. Descendant CommandGroups can
-// shadow these IDs locally; window bindings never search descendant groups.
+// Commands declares operations in this window's default command scope. The
+// content and Window.Shortcuts share that scope. Descendant CommandScopes can
+// shadow these IDs locally; window bindings never search descendant scopes.
 func (w WindowView) Commands(commands ...*CommandView) WindowView {
 	w.commands = slices.Clone(commands)
 	return w

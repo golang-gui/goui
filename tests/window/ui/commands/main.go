@@ -1,4 +1,4 @@
-// 声明式 CommandGroup、菜单与快捷键的窗口验证。
+// 声明式 CommandScope、菜单与快捷键的窗口验证。
 //
 // 环境：桌面、字体和原生事件循环；Linux 在独立 X11／窗口管理器中运行。
 // 启动：go run ./tests/window/ui/commands；-auto 自动派发正常输入并检查退出。
@@ -18,7 +18,7 @@
 //     声明不生成额外 Widget、空行或容器间距，也不依赖菜单是否打开。
 //  7. “External”菜单及窗口 F12 借用同一 gui.Command；F4 切换其启用状态，打开的
 //     菜单实时灰显，copy 不受影响。F12 和菜单各增加外部计数一次。
-//  8. 窗口默认分组不需要显式包裹 CommandGroup；“Window”操作在 Window.Commands
+//  8. 窗口默认作用域不需要显式包裹 CommandScope；“Window”操作在 Window.Commands
 //     声明，窗口 F3 和菜单按 ID 引用。F5 切换该命令启用状态，菜单实时更新。
 //     Check 使用 App.FindCommand(windowID, commandID) 查询，不要求 BuildContext。
 //  9. External 与 Window 初始未勾选；菜单、F12／F3 均由同一处理函数提交勾选状态。
@@ -330,7 +330,7 @@ func main() {
 			if shifted.Get() {
 				mods |= ui.ModShift
 			}
-			inner := ui.CommandGroup(ui.Build(func() ui.View {
+			inner := ui.CommandScope(ui.Build(func() ui.View {
 				definitionBuilds++
 				item := ui.MenuItem("Copy").Command("copy")
 				if override.Get() {
@@ -349,7 +349,7 @@ func main() {
 				ui.Button("Check").ID("check").OnClick(check), newProbe(p),
 			).Spacing(10).Padding(16).Shortcuts(ui.Shortcut(ui.KeyC).Modifiers(mods).Enabled(bindingEnabled.Get()).DefineCommand(ui.Command("copy").BindEnabled(&enabled).OnActivate(func() { outerCount++; report() })))
 		})
-		win := ui.Window("commands").Title("GOUI UI CommandGroup").Size(620, 490).Center(true).Content(content).Shortcuts(
+		win := ui.Window("commands").Title("GOUI UI CommandScope").Size(620, 490).Center(true).Content(content).Shortcuts(
 			ui.Shortcut(ui.KeyF6).OnActivate(toggle), ui.Shortcut(ui.KeyF7).OnActivate(change), ui.Shortcut(ui.KeyF8).OnActivate(check), ui.Shortcut(ui.KeyF9).OnActivate(toggleOverride), ui.Shortcut(ui.KeyF10).OnActivate(toggleItem), ui.Shortcut(ui.KeyF11).OnActivate(toggleBinding),
 			ui.Shortcut(ui.KeyF4).OnActivate(toggleExternal), ui.Shortcut(ui.KeyF12).CommandRef(external),
 			ui.Shortcut(ui.KeyF3).Command("window.run"), ui.Shortcut(ui.KeyF5).OnActivate(toggleWindow),

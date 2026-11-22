@@ -1,5 +1,7 @@
 # CheckButton
 
+通用关系分类见 [Target、Group 与 Scope](DesignUIRelations.md)。本控件保留显式互斥组对象；声明层省略 Group 使用最近同类型组声明，显式对象覆盖默认来源，显式 nil 表示独立。组不取得成员的生命周期所有权。
+
 ## 目标与边界
 
 在 `widgets` 提供一个 CheckButton，通过指示器／按钮外观和显式互斥组支持

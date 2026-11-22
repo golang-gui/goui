@@ -190,7 +190,7 @@ Snapshot 使用 `RoleMenuItemCheckbox`，`MenuItemInfo` 增加 `Checkable`／`Ch
 
 ## 声明式命令接入
 
-UI 的 Window 自动提供默认 CommandGroup，可通过 Window.Commands 或局部 Group.Commands
+UI 的 Window 自动提供默认 CommandScope，可通过 Window.Commands 或局部 CommandScope.Commands
 集中提供普通 Command 声明值，
 也可在 MenuButton 的 MenuItem.DefineCommand 或后代 Shortcut.DefineCommand 中提供并
 使用；MenuItem.Command("id") 与 Shortcut.Command("id") 只引用最近祖先定义。
