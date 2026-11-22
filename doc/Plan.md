@@ -1,5 +1,26 @@
 # Plan
 
+## GUI 测试按子系统归并（2026-11-22）
+
+- [x] gui 根目录从 67 个测试文件减为 49 个，集中输入、拖放、样式、菜单、
+  普通／共享 Popover、计时器、滚动及相关控件主题；最终归属见
+  [Testing](Testing.md#2026-11-22-gui-测试文件整理)。
+- [x] info_test.go 使用外部测试包，保留黑盒边界；本轮将 ButtonGroup 测试归回
+  Button 主题，不把外部测试转成内部测试。独立的 Popover 定位／呈现、样式像素及
+  文本主题继续保留；不修改生产代码、测试名称、断言、运行条件或资源释放顺序。
+- [x] 1716 个 GUI 声明全部保留，本轮 173 个仅迁移文件；代码 token 与原有注释
+  核对一致，新增 18 条中文主题分区注释，未增加测试辅助框架。
+- [x] Linux amd64，无 DISPLAY／WAYLAND_DISPLAY，整理前后
+  `go test -json ./gui/... -count=1` 均为 2979 项通过，测试／子测试名称和结果集合一致；
+  `go test -json -shuffle=on -count=3 ./gui/...` 的 8937 项全部通过，无条件跳过。
+- [x] `go test -race ./gui/... -count=1`、`go vet ./gui/...` 通过；
+  Windows amd64、macOS arm64 的
+  `CGO_ENABLED=0 go test -c -o <仓库外目录>/ ./gui/...` 目标编译通过。
+- [x] Linux amd64／独立 X11／xfwm4（关闭合成），
+  `go test -json ./... -count=1`：6303 项通过，82 个有测试包通过，155 个无测试包单列，
+  零失败、零条件跳过。既有 X11 测试创建私有窗口与 selection，未改变用户设置。
+  本轮仅整理测试，未追加窗口交互；Windows／macOS 原生运行未执行。
+
 ## GUI 测试职责归并（2026-11-22）
 
 - [x] gui 根目录测试文件从 75 个调整为 67 个，小型回归并回对应控件／绘制主题，
