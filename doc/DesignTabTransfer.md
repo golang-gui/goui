@@ -693,7 +693,7 @@ Paint 的 PixelScale：
 `widgets/ui` 的链式接入：
 
 ```go
-wui.TabBar("documents").Reorderable(true).Transferable(true).
+wui.TabBar().Target("documents").Reorderable(true).Transferable(true).
     OnTransferError(func(err error) { /* 由应用处理失败 */ })
 
 wui.TabView(pages...).ID("documents").OnTransfer(func(change wui.TabTransfer) {

@@ -32,7 +32,8 @@ Tab 专属的 `RoleTabView`、`RoleTabBar`、`RoleTab`、`RoleTabPanel` 常量�
 `-fallback-style` 窗口验收参数验证 Basic，此模式不响应例程的 Dark/Text size 按钮。
 
 声明式调用使用 `wui.TabView(wui.TabPage("home", home).Title("Home"))`，
-`wui.TabBar("documents")` 根据 TabView 的 Widget.ID 关联。
+`wui.TabBar().Target("documents")` 通过 UI 的持久 Target 引用关联 TabView 的 Widget.ID。目标局部替换时无需重建 TabBar；
+缺失时解除关联，重新出现时连接新实例，规则见 [UI 关系](DesignUIRelations.md)。
 `TabPage("home", home)` 的第一个参数就是该页面的 Widget/UI ID，不是另一个 key。
 页面嵌入 ViewBase，是对应 widgets.TabPage 的普通 WidgetView；非空 ID 在 Root 内唯一。
 重复的页面 ID 在修改列表前拒绝，不同 Root 可复用 ID，转移时目标冲突拒绝。
@@ -111,7 +112,7 @@ UI 使用普通链式声明，builder 在每次请求时使用最新声明，不
 ```go
 wui.TabView(pages...).ID("documents").
     OnCloseRequest(confirmClose)
-wui.TabBar("documents").
+wui.TabBar().Target("documents").
     ContextMenu(func(pageID string) []*ui.MenuItemView {
         return []*ui.MenuItemView{ui.MenuItem("关闭", func() { requestClose(pageID) })}
     }).
@@ -166,7 +167,7 @@ HeaderBar 示例使用 6 DIP 内部 Padding，避开 Linux Integrated 的安全�
 
 `TabBar.TabWidthRange() (minWidth, maxWidth float32)` 查询配置；
 `SetTabWidthRange(minWidth, maxWidth float32)` 设置 DIP 宽度范围，默认 112..240。
-`widgets/ui.TabBar(...).TabWidthRange(112, 240)` 是薄绑定；省略声明恢复默认值。
+`widgets/ui.TabBar().Target(id).TabWidthRange(112, 240)` 是薄绑定；省略声明恢复默认值。
 不提供 ShrinkTabs 开关；相同上下限（如 240..240）表示固定宽度并直接滚动。
 非正数、NaN 或 Inf 恢复对应默认值，max 小于 min 时提升到 min；
 全栏有效 min 还需容纳每个标签的图标/关闭按钮/留白，max 至少为有效 min。

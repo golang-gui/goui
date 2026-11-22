@@ -8,7 +8,8 @@
 > 2026-11-19 已实现的滚动条扩展见 [内外滚动条设计](DesignScrollBars.md)。
 > 已暴露 HScrollBarOptions / VScrollBarOptions 及对应 setter 和声明式链式方法，
 > 按实际内置槽位适配表头、紧包围与交汇角。2026-11-21 补齐 BindScrollBar 转发，
-> widgets/ui.TableView 自动加入最近 ScrollGroup；外部条独立布局，不进入表格包络。
+> 2026-11-22 widgets/ui.TableView 改由 ScrollBar.Target(id) 关联，无须登记组成员；
+> 外部条独立布局，不进入表格包络。
 
 ## 1. 定位、范围与参考
 

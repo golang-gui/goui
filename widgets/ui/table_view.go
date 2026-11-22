@@ -175,7 +175,6 @@ type tableState[T any] struct {
 	onSortRequest         func(string, widgets.SortOrder)
 	contextMenu           func(string, string) []*baseui.MenuItemView
 	onError               func(error)
-	group                 baseui.ScrollGroupBinding
 }
 type tableColumnState[T any] struct {
 	owner    *tableState[T]
@@ -296,13 +295,9 @@ func (v *TableViewView[T]) Update(ctx baseui.BuildContext, widget gui.Widget) {
 		table.SetSort(v.sortColumn, v.sortOrder)
 	}
 	table.Refresh()
-	if ctx.State() == s && !table.Destroyed() {
-		s.group.Update(ctx, table)
-	}
 }
 func (*TableViewView[T]) Unmount(ctx baseui.BuildContext, _ gui.Widget) {
 	s := ctx.State().(*tableState[T])
-	s.group.Disconnect()
 	s.handles.Disconnect()
 	for _, c := range s.columns {
 		c.handle.Disconnect()
@@ -311,11 +306,6 @@ func (*TableViewView[T]) Unmount(ctx baseui.BuildContext, _ gui.Widget) {
 	s.ctx, s.model = nil, nil
 	s.onSelection, s.onCurrent, s.onActivate = nil, nil, nil
 	s.onSortRequest, s.contextMenu, s.onError = nil, nil, nil
-}
-
-func (*TableViewView[T]) Reparented(ctx baseui.BuildContext) {
-	s := ctx.State().(*tableState[T])
-	s.group.Update(ctx, s.table)
 }
 
 // This ordinary Container carries one declared subtree without imposing a

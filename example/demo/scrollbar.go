@@ -8,7 +8,7 @@ import (
 )
 
 // This standalone numeric example uses a WidgetView. ui.ScrollBar instead
-// receives its value and range from a ScrollGroup host.
+// receives its value and range from its Target host.
 type barView struct {
 	ui.ViewBase[barView]
 	value   float32

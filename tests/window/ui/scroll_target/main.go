@@ -1,7 +1,7 @@
-// 外部滚动控制与声明式 ScrollGroup 窗口验收。
+// 持久 Target、外部滚动控制与标签关联窗口验收。
 //
 // 环境：桌面和正常事件循环；记录系统、Linux WM、实际绘图后端及缩放。
-// 启动：go run ./tests/window/ui/scroll_group [-auto] [-basic] [-dark]。
+// 启动：go run ./tests/window/ui/scroll_target [-auto] [-basic] [-dark]。
 // GOUI_PLAT_PAINTER=software/opengl、GOUI_PLAT_SCALE=1/2 选择后端和倍率。
 // 初始：左侧图片隐藏内置条，配有长、短两条外部纵条和一条横条；右侧表格
 // 也隐藏内置条，独立外部条与表格间有6 DIP间隔，列宽保证横向溢出。
@@ -14,9 +14,11 @@
 //  3. F9切换左侧内置条，外部条仍可用；内外同时显示时都反映相同实际偏移。
 //     F6输出CHECK、对象身份、构建次数、范围、页面长度与BOUNDS。
 //  4. 拖动右侧表格外部横／纵条，表头横移与正文一致；F10 Reveal末行后纵条
-//     到底。左右两组互不影响，外部条不计入表格边框或紧包围轮廓。
+//     到底。左右滚动区域互不影响，外部条不计入表格边框或紧包围轮廓。
 //  5. F11切换Modern亮暗，检查原有8 DIP默认条与自定义14/6 DIP长条、留白、
 //     裁剪、表头和正文对齐。Basic不随Dark变化。窗口缩放后重复操作。
+//  6. F12只局部替换右上 TabView，TabBar 对象及外层构建次数不变；标题版本更新，
+//     点击B可切换到对应正文，TabBar.View()必须指向新实例，语义仍有两个标签。
 //
 // -auto使用正常DispatchEvent派发指针／快捷键，按可观察条件推进，45秒超时；
 // 自动PASS不代替真实鼠标和视觉检查，不使用DevServer或语义动作捷径。
@@ -77,6 +79,29 @@ func drag(w inputTarget, bar *gui.ScrollBar) {
 	}
 }
 
+func tabBounds(info gui.WidgetInfo, text string) (geometry.Rectangle, bool) {
+	if info.Role == widgets.RoleTab && info.Text == text && info.Bounds.Width > 0 {
+		return info.Bounds, true
+	}
+	for _, child := range info.Children {
+		if bounds, ok := tabBounds(child, text); ok {
+			return bounds, true
+		}
+	}
+	return geometry.Rectangle{}, false
+}
+
+func tabCount(info gui.WidgetInfo) int {
+	count := 0
+	if info.Role == widgets.RoleTab {
+		count++
+	}
+	for _, child := range info.Children {
+		count += tabCount(child)
+	}
+	return count
+}
+
 type tableModel struct{ *gui.SliceListModel[string] }
 
 func (m *tableModel) RowID(i int) string { return m.ItemAt(i) }
@@ -118,7 +143,7 @@ func main() {
 	basic := flag.Bool("basic", false, "Basic外观")
 	dark := flag.Bool("dark", false, "Modern暗色")
 	flag.Parse()
-	version, builtIn := ui.MakeState(0), ui.MakeState(false)
+	version, builtIn, tabVersion := ui.MakeState(0), ui.MakeState(false), ui.MakeState(0)
 	picture := image.NewRGBA(image.Rect(0, 0, 640, 1800))
 	for y := range 1800 {
 		for x := range 640 {
@@ -140,20 +165,18 @@ func main() {
 	p := new(painterProbe)
 	var app ui.App
 	started, completed := false, false
-	builds, sourceBuilds, nextVersion := 0, 0, 0
+	builds, sourceBuilds, tabBuilds, nextVersion := 0, 0, 0, 0
 	var old *gui.ScrollView
 	var originalBar *gui.ScrollBar
 	var originalTable *widgets.TableView
+	var originalTabs *widgets.TabBar
+	var oldTabs *widgets.TabView
 	var timer *ui.Timer
 	step := 0
 	find := func(id string) gui.Widget { return app.FindWidget("scroll", id) }
 	bar := func(id string) *gui.ScrollBar { return find(id).(*gui.ScrollBar) }
 	source := func() *gui.ScrollView {
-		v := version.Get()
-		if v < 0 {
-			return nil
-		}
-		w, _ := find(fmt.Sprintf("source-%d", v)).(*gui.ScrollView)
+		w, _ := find("source").(*gui.ScrollView)
 		return w
 	}
 	check := func() {
@@ -173,9 +196,12 @@ func main() {
 		info := table.Snapshot()
 		require(bar("table-v").Snapshot().Range.Value == info.ScrollY && bar("table-h").Snapshot().Range.Value == info.ScrollX, "表格外部条与实际偏移不一致")
 		require(bar("long") == originalBar && table == originalTable, "无关控件被重建")
-		fmt.Printf("CHECK PASS builds=%d source-builds=%d version=%d\n", builds, sourceBuilds, version.Get())
+		tabs := find("tab-bar").(*widgets.TabBar)
+		require(tabs == originalTabs && tabs.View() == find("pages") && len(tabs.View().Pages()) == 2, "标签 Target 或语义内容没有更新")
+		require(tabs.Snapshot().Role == widgets.RoleTabBar && tabCount(tabs.Snapshot()) == 2, "TabBar 语义子树丢失或重复标签")
+		fmt.Printf("CHECK PASS builds=%d source-builds=%d tab-builds=%d version=%d tab-version=%d\n", builds, sourceBuilds, tabBuilds, version.Get(), tabVersion.Get())
 	}
-	must(ui.Run("org.golanggui.ScrollGroupVerification", func(current ui.App) ui.RootView {
+	must(ui.Run("org.golanggui.ScrollTargetVerification", func(current ui.App) ui.RootView {
 		app = current
 		builds++
 		if !started {
@@ -189,6 +215,7 @@ func main() {
 				if originalBar == nil {
 					originalBar = bar("long")
 					originalTable = find("table").(*widgets.TableView)
+					originalTabs = find("tab-bar").(*widgets.TabBar)
 					fmt.Println("READY")
 					check()
 				}
@@ -222,11 +249,12 @@ func main() {
 					require(source() != old && builds == 1, "局部恢复重建了外部内容")
 					drag(w, bar("long"))
 					check()
+					old = source()
 					r := bar("long").Snapshot().Bounds
 					must(w.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: r.X + 3, Y: r.Y + r.Height - 3}, Button: events.PointerButtonLeft}))
 					key(w, events.KeyF8)
 				case 3:
-					if source() == nil || source().ID() != "source-2" || bar("long").PageSize() == 0 {
+					if source() == nil || source() == old || bar("long").PageSize() == 0 {
 						return
 					}
 					require(source().ScrollY() == 0 && builds == 1, "局部替换没有保留外部条")
@@ -250,8 +278,23 @@ func main() {
 					}
 					require(bar("long").PageSize() == source().ScrollGeometry().Viewport.Height, "内置条占位后页面未同步")
 					check()
+					oldTabs = originalTabs.View()
+					key(w, events.KeyF12)
+				case 5:
+					tabs := originalTabs.View()
+					bounds, ready := tabBounds(originalTabs.Snapshot(), "B 1")
+					if tabs == oldTabs || !ready {
+						return
+					}
+					require(builds == 1 && tabBuilds == 2 && tabs == find("pages"), "局部替换标签目标重建了引用方")
+					position := geometry.Point{X: bounds.X + bounds.Width/2, Y: bounds.Y + bounds.Height/2}
+					for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+						must(w.DispatchEvent(events.PointerEvent{EventType: kind, Position: position, Button: events.PointerButtonLeft}))
+					}
+					require(tabs.Current() == tabs.Pages()[1], "新目标的标签无法通过正常输入切换")
+					check()
 					completed = true
-					fmt.Println("SCROLL GROUP PASS")
+					fmt.Println("SCROLL TARGET PASS")
 					timer.Stop()
 					app.Quit()
 				}
@@ -259,7 +302,7 @@ func main() {
 			})
 		}
 		hidden := ui.ScrollBarOptions{Policy: ui.ScrollBarHidden}
-		left := ui.ScrollGroup(ui.VBox(
+		left := ui.VBox(
 			ui.Label("Image: external bars / short track"),
 			ui.HBox(ui.Build(func() ui.View {
 				sourceBuilds++
@@ -271,24 +314,33 @@ func main() {
 				if builtIn.Get() {
 					options = ui.ScrollBarOptions{}
 				}
-				return ui.ScrollView(ui.Image(picture)).ID(fmt.Sprintf("source-%d", v)).HScrollBarOptions(options).VScrollBarOptions(options)
-			}), ui.ScrollBar(layout.DirectionVertical).ID("long").Thickness(14).ThumbThickness(6),
-				ui.VBox(ui.ScrollBar(layout.DirectionVertical).ID("short").MinSize(8, 180).MaxSize(8, 180)).CrossAlign(layout.CrossStretch),
+				return ui.Modify(ui.ScrollView(ui.Image(picture)).ID(fmt.Sprintf("source-%d", v)).HScrollBarOptions(options).VScrollBarOptions(options)).ID("source")
+			}), ui.ScrollBar(layout.DirectionVertical).Target("source").ID("long").Thickness(14).ThumbThickness(6),
+				ui.VBox(ui.ScrollBar(layout.DirectionVertical).Target("source").ID("short").MinSize(8, 180).MaxSize(8, 180)).CrossAlign(layout.CrossStretch),
 			).Spacing(6).CrossAlign(layout.CrossStretch).MainWeight(1),
-			ui.ScrollBar(layout.DirectionHorizontal).ID("horizontal"),
-		).Spacing(6).CrossAlign(layout.CrossStretch).MainWeight(1))
-		right := ui.ScrollGroup(ui.VBox(
+			ui.ScrollBar(layout.DirectionHorizontal).Target("source").ID("horizontal"),
+		).Spacing(6).CrossAlign(layout.CrossStretch).MainWeight(1)
+		right := ui.VBox(
+			wui.TabBar().Target("pages").ID("tab-bar"),
+			ui.Build(func() ui.View {
+				tabBuilds++
+				v := tabVersion.Get()
+				return ui.Modify(wui.TabView(
+					wui.TabPage("a", ui.Label(fmt.Sprintf("Page A version %d", v))).Title(fmt.Sprintf("A %d", v)),
+					wui.TabPage("b", ui.Label(fmt.Sprintf("Page B version %d", v))).Title(fmt.Sprintf("B %d", v)),
+				).ID(fmt.Sprintf("pages-%d", v))).ID("pages").MinSize(0, 55).MaxSize(0, 55).MainWeight(0)
+			}),
 			ui.Label("Table: independent external bars"),
 			ui.HBox(wui.TableView(model,
 				wui.TableColumn("name", "Name", func(_ widgets.TableRow, value string) ui.View { return ui.Label(value) }).Width(300).MinWidth(300),
 				wui.TableColumn("description", "Description", func(_ widgets.TableRow, value string) ui.View { return ui.Label(value + " fixed column") }).Width(300).MinWidth(300),
 			).ID("table").MainWeight(1).HScrollBarOptions(hidden).VScrollBarOptions(hidden),
-				ui.ScrollBar(layout.DirectionVertical).ID("table-v"),
+				ui.ScrollBar(layout.DirectionVertical).Target("table").ID("table-v"),
 			).Spacing(6).CrossAlign(layout.CrossStretch).MainWeight(1),
-			ui.ScrollBar(layout.DirectionHorizontal).ID("table-h"),
-		).Spacing(6).CrossAlign(layout.CrossStretch).MainWeight(1))
-		root := ui.Root().Windows(ui.Window("scroll").Title("GOUI ScrollGroup").Size(1000, 640).Center(true).Content(ui.VBox(
-			ui.Label("F6 Check   F7 Remove/restore   F8 Replace   F9 Built-in   F10 Reveal   F11 Dark"),
+			ui.ScrollBar(layout.DirectionHorizontal).Target("table").ID("table-h"),
+		).Spacing(6).CrossAlign(layout.CrossStretch).MainWeight(1)
+		root := ui.Root().Windows(ui.Window("scroll").Title("GOUI ScrollTarget").Size(1000, 640).Center(true).Content(ui.VBox(
+			ui.Label("F6 Check   F7 Remove   F8 Replace   F9 Built-in   F10 Reveal   F11 Dark   F12 Tabs"),
 			ui.HBox(left, right).Spacing(18).CrossAlign(layout.CrossStretch).MainWeight(1), newProbe(p),
 		).Padding(16).Spacing(12).CrossAlign(layout.CrossStretch)).Shortcuts(
 			ui.Shortcut(ui.KeyF6).OnActivate(check),
@@ -303,6 +355,7 @@ func main() {
 			ui.Shortcut(ui.KeyF9).OnActivate(func() { builtIn.Set(!builtIn.Get()) }),
 			ui.Shortcut(ui.KeyF10).OnActivate(func() { find("table").(*widgets.TableView).Reveal("row-79") }),
 			ui.Shortcut(ui.KeyF11).OnActivate(func() { *dark = !*dark; app.RequestUpdate() }),
+			ui.Shortcut(ui.KeyF12).OnActivate(func() { tabVersion.Set(tabVersion.Get() + 1) }),
 		))
 		if !*basic {
 			root = root.StyleSheet(modern.Sheet(modern.Options{Dark: *dark}))
