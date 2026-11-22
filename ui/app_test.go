@@ -93,6 +93,40 @@ func TestWindowSkipTaskbarCreationOnly(t *testing.T) {
 	}
 }
 
+func TestWindowNoKeepRunningCreationOnly(t *testing.T) {
+	app := newWindowTestApplication()
+	excluded := true
+	id := "inspector"
+	rt := newApp(app, func() RootView {
+		return Window(id).NoKeepRunning(excluded).Content(Label("inspect"))
+	})
+	t.Cleanup(rt.destroyAll)
+	if err := rt.rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	first := app.windows[0]
+	if len(app.options) != 1 || !app.options[0].NoKeepRunning || rt.FindWindow(id) != first {
+		t.Fatal("NoKeepRunning 未传递或影响了窗口登记", app.options)
+	}
+	if err := rt.rebuild(); err != nil || len(app.windows) != 1 || first.shows != 1 {
+		t.Fatal("相同声明重建了窗口", err)
+	}
+	excluded = false
+	if err := rt.rebuild(); err == nil || !strings.Contains(err.Error(), "NoKeepRunning") || first.destroyed {
+		t.Fatal("同一窗口 ID 修改创建选项未被拒绝，或破坏了旧窗口", err)
+	}
+	id = "ordinary"
+	if err := rt.rebuild(); err != nil || len(app.options) != 2 || app.options[1].NoKeepRunning || !first.destroyed {
+		t.Fatal("新窗口 ID 未采用新的退出参与选项", err, app.options)
+	}
+	if Window("default").options.NoKeepRunning || Window("explicit").NoKeepRunning(true).NoKeepRunning(false).options.NoKeepRunning {
+		t.Fatal("默认值或最后一次设置未保留普通窗口语义")
+	}
+	if app.quits != 0 {
+		t.Fatal("UI 协调层自行决定了应用退出")
+	}
+}
+
 func TestWindowCenterCreationOnly(t *testing.T) {
 	app := newWindowTestApplication()
 	center := true
