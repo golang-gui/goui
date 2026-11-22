@@ -123,6 +123,7 @@ Software 启动后本轮工作被用户中断；批量重复启动未执行，�
 
 ```go
 gui.WindowOptions{NoKeepRunning: true}
+ui.Window("inspector").NoKeepRunning(true)
 ```
 
 NoKeepRunning 默认为 false，保留普通窗口行为。该选项只由 GUI 解释，不传给 platform，
@@ -144,6 +145,9 @@ NoKeepRunning 默认为 false，保留普通窗口行为。该选项只由 GUI �
 窗口。退出清理使用 Destroy，不重新询问 CloseRequest；已有帧内延迟释放顺序继续适用，
 Painter 在 End 后释放。退出期间创建窗口返回 ErrUnavailable，原生创建回调中发生退出
 也不能在返回时补登记窗口。系统 Surface 继续沿现有系统宿主生命周期清理。
+
+UI 仅把 NoKeepRunning 值交给 GUI，复用已有窗口身份与创建期选项校验。同一窗口 ID
+重建只能保留原值，改变该选项需要新 ID；普通重建不重新创建或显示窗口。
 
 参考公开契约：[Qt 6.12 WA_QuitOnClose](https://doc.qt.io/qt-6.12/qt.html#WidgetAttribute-enum)
 按窗口决定其是否参与应用自动退出判断；

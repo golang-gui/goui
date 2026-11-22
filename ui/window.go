@@ -75,6 +75,15 @@ func (w WindowView) SkipTaskbar(skip bool) WindowView {
 	return w
 }
 
+// NoKeepRunning excludes this window from keeping the application running.
+// The default is false. Excluded windows remain application-owned and are
+// destroyed during shutdown. This is creation-only; use a new window ID to
+// change it. The GUI application owns the automatic-exit policy.
+func (w WindowView) NoKeepRunning(exclude bool) WindowView {
+	w.options.NoKeepRunning = exclude
+	return w
+}
+
 // Center requests initial client-area centering in the window's work area.
 // It is creation-only, using the initial Size, and never reapplied on rebuild
 // or Show. False preserves platform defaults; a later SetPosition overrides it.

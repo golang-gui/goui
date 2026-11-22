@@ -11,8 +11,9 @@ Go1.24.13独立消费验证已完成，README下载入口同步。既有构建�
 
 ## 窗口保活参与（2026-11-22）
 
-WindowOptions.NoKeepRunning 允许窗口不阻止应用自动退出，默认行为不变。
-窗口仍归应用管理，退出时由 GUI 兜底清理。
+WindowOptions.NoKeepRunning 与 ui.Window.NoKeepRunning(bool) 允许窗口不阻止应用
+自动退出，默认行为不变。窗口仍归应用管理，退出时由 GUI 兜底清理；UI 复用创建期选项
+和窗口身份校验。
 设计见 [DesignApp](DesignApp.md#35-窗口保活与退出清理2026-11-22)，
 验证范围见 Plan。
 
