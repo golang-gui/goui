@@ -2,7 +2,8 @@
 
 > 状态：2026-11-19 首批 A 已交付 ScrollBarOptions、TableView 转发和边框适配。
 > 2026-11-21 补充外部 GUI 绑定、PageSize 与 TableView；2026-11-22 声明式入口
-> 收敛为 Target／ScrollBar。完整契约、实施进度与验证范围见 Plan。
+> 收敛为 Target／ScrollBar，GUI 协议命名为 ScrollClient／BindScroll。
+> 完整契约、实施进度与验证范围见 Plan。
 
 ## 1. 目标与边界
 
@@ -222,24 +223,26 @@ wui.TableView(model, columns...).
 
 ## 6. 外部控制协议
 
-本节为外部 GUI 绑定契约，第 7 节为声明式分组契约。
+本节为外部 GUI 绑定契约，第 7 节为声明式 Target 契约。
 
 ```go
-type ScrollBarClient interface {
+type ScrollClient interface {
     SetValue(float32)
     SetMax(float32)
     SetPageSize(float32)
     ConnectChange(func(float32)) signal.Handle
 }
 
-func (sv *ScrollView) BindScrollBar(
+func (sv *ScrollView) BindScroll(
     axis layout.Direction,
-    client ScrollBarClient,
+    client ScrollClient,
 ) signal.Handle
 ```
 
-该接口不包含 Widget。现有 *ScrollBar 保持为具体控件，只增加必要的 PageSize
-输入；TableView 薄转发 BindScrollBar。合法方向为 Horizontal/Vertical，
+ScrollClient 表示单轴滚动控制端，不包含 Widget；普通 Go 对象也可实现。
+接口及 BindScroll、私有连接实现集中在 gui/scroll_view.go，与宿主状态和生命周期一起维护；
+ScrollBar 的实现断言放在 gui/scroll_bar.go。现有 *ScrollBar 保持为具体控件，只增加必要的 PageSize
+输入；TableView 薄转发 BindScroll。合法方向为 Horizontal/Vertical，
 非法方向作为 API 误用触发 panic；nil 客户端或已销毁宿主不建立连接，返回 nil。
 
 ### 6.1 状态与请求
@@ -272,7 +275,7 @@ ScrollBar 自身的手势取消路径结束旧拖动，不临时改写 Visible �
 
 ScrollBar 通过 Target(id) 关联同一 UI Root 的有效 Widget 输出；不需要 ScrollGroup，
 ScrollView、TableView 和第三方宿主也不登记组成员。通用协调契约见
-[Target、Group 与 Scope](DesignUIRelations.md)。GUI 保留 BindScrollBar 直接对象入口。
+[Target、Group 与 Scope](DesignUIRelations.md)。GUI 保留 BindScroll 直接对象入口。
 
 ```go
 ui.HBox(
@@ -296,7 +299,7 @@ ui.ScrollBar 暴露 Target、Orientation、Thickness、ThumbThickness 及普通�
 Options，不改变布局、颜色、可见性和 Widget 所有权。外部条在自身语义位置报告
 Range 与方向，不进入 TableView 的内容包络，输入继续正常派发。
 
-ScrollHost 是 BindScrollBar 能力接口；Target 支持按接口解析，第三方控件无需
+ScrollHost 是 BindScroll 能力接口；Target 支持按接口解析，第三方控件无需
 向 Root 或 BuildContext 增加类型特例。不再暴露 ScrollGroupBinding。
 
 ## 8. 分阶段实施与验收
@@ -317,7 +320,7 @@ Auto/Always/Hidden、允许轴变化、双条相互占位、极小分配、末�
 
 ### B. 外部 GUI 协议
 
-增加 ScrollBarClient、PageSize、BindScrollBar 和 TableView 转发。验证非 Widget
+增加 ScrollClient、PageSize、BindScroll 和 TableView 转发。验证非 Widget
 客户端、不同轨道长度、内外条同时控制、无请求回声、范围变化、解绑、重入和销毁。
 验证客户端存在与否均不影响 Hidden 策略下的滚轮、Reveal 和程序滚动。
 

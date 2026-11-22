@@ -414,3 +414,5 @@ func (b *ScrollBar) emitValueFromPos(pos geometry.Point) {
 	// far edge must request Max exactly even for billion-DIP content.
 	b.change.Emit(float32(float64(start) / float64(ml-t) * float64(b.max)))
 }
+
+var _ ScrollClient = (*ScrollBar)(nil)
