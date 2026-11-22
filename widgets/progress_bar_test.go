@@ -447,6 +447,9 @@ func (p *progressPixelPainter) FillRect(rect geometry.Rectangle, brush graphics.
 func (p *progressPixelPainter) FillPath(path graphics.Path, brush graphics.Brush) {
 	p.native.FillPath(path, brush)
 }
+func (p *progressPixelPainter) SnapRect(rect geometry.Rectangle) geometry.Rectangle {
+	return p.native.SnapRect(rect)
+}
 func (p *progressPixelPainter) SetClipRect(rect geometry.Rectangle) { p.native.SetClipRect(rect) }
 func (p *progressPixelPainter) SetTransform(transform geometry.Transform) {
 	p.native.SetTransform(transform)

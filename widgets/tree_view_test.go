@@ -950,6 +950,8 @@ type treePaintRecorder struct {
 	ink            graphics.Brush
 }
 
+func (p *treePaintRecorder) SnapRect(r geometry.Rectangle) geometry.Rectangle { return r }
+
 func (p *treePaintRecorder) FillRoundRect(geometry.Rectangle, float32, graphics.Brush) { p.fills++ }
 func (p *treePaintRecorder) DrawRoundRect(geometry.Rectangle, float32, float32, graphics.Brush) {
 	p.borders++

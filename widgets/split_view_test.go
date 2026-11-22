@@ -501,6 +501,8 @@ type splitPaintRecorder struct {
 	paths  int
 }
 
+func (p *splitPaintRecorder) SnapRect(r geometry.Rectangle) geometry.Rectangle { return r }
+
 func (p *splitPaintRecorder) FillRect(r geometry.Rectangle, b graphics.Brush) {
 	p.rect, p.brush = r, b
 	p.fills = append(p.fills, r)

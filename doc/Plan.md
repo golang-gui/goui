@@ -7263,3 +7263,23 @@ error，原样全仓命令报编译失败；恢复其既有尽力而为调用后
   开销中位数约 762→1092 µs／32 图元；不将此结果外推为桌面帧率。
 - [ ] 本轮不覆盖 Windows OpenGL、macOS 原生、硬件 GPU、真实混合 DPI 或移动端；
   应用逻辑倍率和 WARP 离屏结果不代替这些环境的验收。
+
+## 样式盒形外框对齐（2026-11-22）
+
+- [x] GUI 统一三个 PaintStyled helper 的外框对齐，包含混合圆角及选边；保留
+  分数边宽和内轮廓，不改变布局／命中／Snapshot。契约见
+  [DesignCornerRadius](DesignCornerRadius.md#样式外框对齐2026-11-22)。
+- [x] 独立直边覆盖回归在旧实现上失败，修改后通过；补齐既有绘制替身的 SnapRect，
+  保留所有原像素、状态、语义和几何断言。`go test ./... -count=1 -json`：
+  6341 项通过，零失败、跳过；gui／widgets 无显示 race、gui／widgets／Software
+  vet 通过，Windows amd64／macOS arm64 的 GUI 和 widgets 测试目标编译通过。
+  既有 X11 包内测试会使用私有窗口和 selection，不修改系统设置。
+- [x] Windows 10 x64 / Direct2D / 1x 的最终 Demo 实际操作及亮暗外观复核：
+  Switch 开／关、混合圆角、选边收尖和滚动后直边均通过；GUI 圆角／Popover
+  自动窗口通过。Linux X11 / Xfwm4 / Software 的 GUI 圆角自动窗口通过。
+- [ ] Linux Mesa llvmpipe OpenGL 的同一 GUI 窗口在外缘 (17,0) 得到
+  RGBA {27,27,27,30}，参考 {24,24,24,27}，超过原 ±2 预算；
+  入口为 `GOUI_PLAT_PAINTER=opengl GOUI_PLAT_SCALE=1 go run ./tests/window/gui/corner_radius -auto`；
+  未修改基线在同后端、倍率及入口得到完全相同失败。本轮不放宽断言，也不把该项记为通过。
+  图形尖端／阴影、Switch 与圆弧窗口的 OpenGL 回归通过，见前节。
+- [ ] macOS 原生、Windows OpenGL、硬件 GPU、真实混合 DPI 与移动端未执行。

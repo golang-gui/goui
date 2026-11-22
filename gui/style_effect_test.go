@@ -52,6 +52,84 @@ func TestStyledOpaqueMatchingFillCommands(t *testing.T) {
 	}
 }
 
+// 样式的外框按设备边界对齐，内框保留小数宽度；只在远离圆角的直边采样。
+// 预乘 sRGB/RGBA8 的预期直接来自像素与环带的面积交集，允许 1 级量化误差。
+func TestStyledFrameStraightCoverage(t *testing.T) {
+	backend, err := software.NewPainter(&widgetRenderSurface{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Destroy()
+	rect := geometry.Rect(4.25, 5.5, 32.5, 24.25)
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		for _, offset := range []float32{0, .5} {
+			for _, radius := range []geometry.CornerRadius{geometry.UniformCornerRadius(4), {TopLeft: 4, BottomRight: 3}} {
+				for _, sides := range []style.BorderSides{style.BorderAll, style.BorderTop | style.BorderLeft} {
+					for _, width := range []float32{1, 1.5} {
+						for _, alpha := range []uint8{128, 255} {
+							for _, entry := range []string{"background", "border", "box"} {
+								ink := color.NRGBA{R: 40, G: 100, B: 220, A: alpha}
+								rule := style.Default().CornerRadius(radius).BorderSides(sides).BorderWidth(width / scale).BorderColor(ink)
+								if entry == "background" {
+									rule = rule.BackgroundColor(ink)
+								}
+								img, err := backend.RenderImage(int(48*scale), int(40*scale), scale, func() {
+									p := newPainter(backend, geometry.Rect(0, 0, 48, 40), scale)
+									p.SetTransform(geometry.Translate(offset, offset))
+									switch entry {
+									case "background":
+										PaintStyledBackground(p, rect, rule.Style)
+									case "border":
+										PaintStyledBorder(p, rect, rule.Style)
+									case "box":
+										PaintStyledBox(p, rect, rule.Style)
+									}
+								})
+								if err != nil {
+									t.Fatal(err)
+								}
+								left := int(math.Floor(float64((rect.X+offset)*scale) + .5))
+								top := int(math.Floor(float64((rect.Y+offset)*scale) + .5))
+								right := int(math.Floor(float64((rect.X+rect.Width+offset)*scale) + .5))
+								bottom := int(math.Floor(float64((rect.Y+rect.Height+offset)*scale) + .5))
+								for side, pt := range []image.Point{{X: (left + right) / 2, Y: top}, {X: left, Y: (top + bottom) / 2}, {X: right - 1, Y: (top + bottom) / 2}} {
+									for delta := -1; delta <= 3; delta++ {
+										coverage := float64(0)
+										if delta >= 0 {
+											if entry == "background" {
+												coverage = 1
+											} else if side != 2 || sides&style.BorderRight != 0 {
+												coverage = max(0, min(1, float64(width)-float64(delta)))
+											}
+										}
+										point := pt
+										if side == 0 {
+											point.Y += delta
+										} else if side == 1 {
+											point.X += delta
+										} else {
+											point.X -= delta
+										}
+										var want color.RGBA
+										for i, value := range []*uint8{&want.R, &want.G, &want.B, &want.A} {
+											component := []uint8{ink.R, ink.G, ink.B, 255}[i]
+											*value = uint8(math.Round(float64(component) * float64(alpha) / 255 * coverage))
+										}
+										got := color.RGBAModel.Convert(img.At(point.X, point.Y)).(color.RGBA)
+										if !closePixel(got, want, 1) {
+											t.Fatalf("%s scale=%g offset=%g radius=%v sides=%v width=%g alpha=%d side=%d delta=%d：%v，应为%v", entry, scale, offset, radius, sides, width, alpha, side, delta, got, want)
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // 预乘sRGB/RGBA8，独立圆方程检测整颗像素及0.05物理像素余量都处于形内。
 // 此区域必须完全不透明，只容许1级颜色量化误差，不能用AA容差掩盖角内漏像素。
 func TestStyledOpaqueMatchingFillPixels(t *testing.T) {
@@ -80,9 +158,9 @@ func TestStyledOpaqueMatchingFillPixels(t *testing.T) {
 						if err != nil {
 							t.Fatal(err)
 						}
-						// 仅平移的等圆角原语按公开像素对齐契约取整外框；任意Path与旋转保留几何。
+						// 样式外框在纯平移时统一取整；旋转保留原始几何。
 						ref := rect
-						if radius.Uniform() && !rotated {
+						if !rotated {
 							left := float32(math.Floor(float64((rect.X+offset)*scale)+.5))/scale - offset
 							top := float32(math.Floor(float64((rect.Y+offset)*scale)+.5))/scale - offset
 							right := float32(math.Floor(float64((rect.X+rect.Width+offset)*scale)+.5))/scale - offset
@@ -748,7 +826,7 @@ func TestStyledOpaqueDifferentColorsStayOpaque(t *testing.T) {
 								t.Fatal(err)
 							}
 							ref := rect
-							if radius.Uniform() && transform.A11 == 1 && transform.A22 == 1 && transform.A12 == 0 && transform.A21 == 0 {
+							if transform.A11 == 1 && transform.A22 == 1 && transform.A12 == 0 && transform.A21 == 0 {
 								// 独立物理边界公式；不调用生产像素对齐/路径 helper。
 								edge := func(x, shift float32) float32 { return float32(math.Floor(float64((x+shift)*scale)+.5))/scale - shift }
 								l, top := edge(rect.X, transform.TX), edge(rect.Y, transform.TY)

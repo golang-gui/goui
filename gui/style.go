@@ -101,10 +101,10 @@ func PaintWidgetStyle(p Painter, widget Widget, defaultName string) {
 
 // PaintStyledBackground paints the specified style's background, including its
 // radius. Missing or transparent colors and empty rectangles emit no commands.
-// A rounded background does not clip children.
+// Its outer frame follows Painter.SnapRect. A rounded background does not clip children.
 func PaintStyledBackground(p Painter, rect geometry.Rectangle, s style.Style) {
 	radius, _ := s.CornerRadius()
-	paintStyledBackground(p, rect, s, radius, geometry.Insets{})
+	paintStyledBackground(p, p.SnapRect(rect), s, radius, geometry.Insets{})
 }
 
 func paintStyledBackground(p Painter, rect geometry.Rectangle, s style.Style, radius geometry.CornerRadius, insets geometry.Insets) {
@@ -153,6 +153,8 @@ func paintRoundedBackground(p Painter, rect geometry.Rectangle, radius geometry.
 // Translucent borders retain the complete background. With an opaque background and full
 // opaque border, the border supplies the complete outer fill and the background
 // covers its inset interior. Matching colors need only one fill.
+// Every corner and edge selection uses Painter.SnapRect for the outer frame;
+// fractional border widths and logical layout bounds are unchanged.
 // Shadow and text are separate operations.
 func PaintStyledBox(p Painter, rect geometry.Rectangle, s style.Style) {
 	radius, _ := s.CornerRadius()
@@ -160,6 +162,10 @@ func PaintStyledBox(p Painter, rect geometry.Rectangle, s style.Style) {
 }
 
 func paintStyledBox(p Painter, rect geometry.Rectangle, s style.Style, radius geometry.CornerRadius, sides style.BorderSides) {
+	// All styled contours share the same device-aligned outer frame, including
+	// mixed corners and selected edges. Keep inset contours unquantized so
+	// fractional border widths and their inner AA coverage are preserved.
+	rect = p.SnapRect(rect)
 	inset := opaqueBorderInset(s)
 	if sides == style.BorderAll && inset > 0 {
 		background, _ := s.BackgroundColor()
@@ -173,9 +179,6 @@ func paintStyledBox(p Painter, rect geometry.Rectangle, s style.Style, radius ge
 				// Derive both contours from the same outer frame. Insetting a
 				// background to the stroke centerline and snapping it separately
 				// leaves translucent gaps under thin antialiased borders.
-				if radius.Uniform() {
-					rect = p.SnapRect(rect)
-				}
 				radius = radius.Normalize(rect.Size)
 				paintRoundedBackground(p, rect, radius, graphics.ColorOf(border))
 				width := inset * 2
@@ -231,9 +234,10 @@ func opaqueBorderInset(s style.Style) float32 {
 // It does not reserve layout space. Missing/transparent colors, nonpositive
 // widths, empty rectangles and an explicit empty BorderSides emit no commands.
 // Unset BorderSides paints all edges; selected edges share one width and color.
+// Its outer frame follows Painter.SnapRect; fractional widths remain unchanged.
 func PaintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style) {
 	radius, _ := s.CornerRadius()
-	paintStyledBorder(p, rect, s, radius, styledBorderSides(s))
+	paintStyledBorder(p, p.SnapRect(rect), s, radius, styledBorderSides(s))
 }
 
 func paintStyledBorder(p Painter, rect geometry.Rectangle, s style.Style, radius geometry.CornerRadius, sides style.BorderSides) {
