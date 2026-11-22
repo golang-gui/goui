@@ -344,3 +344,17 @@ gui 包的 1716 个声明全部保留，其中 110 个仅迁移文件；声明�
 逐项核对一致。仅整理文件、导入和间隔，不修改测试名称、输入、断言、容差、运行条件、
 事件路径或资源释放顺序，不修改生产代码。保留公共平台值类型与 Software 离屏像素测试，
 不新增具体原生后端、平台后缀、测试框架或生产导出入口。验证结果见 Plan。
+
+gui/textedit 的 16 个测试文件归并为 11 个，保留模型、批次、投影、换行、遮蔽和高度
+等独立主题；几何与基准的归属如下：
+
+| 原文件 | 当前归属 |
+| --- | --- |
+| geometry_index_test.go、geometry_precision_test.go | geometry_test.go，索引参考、软折行亲和性与浮点精度 |
+| geometry_bench_test.go | geometry_test.go，已有度量上的几何查询基准 |
+| fragment_bench_test.go | fragment_test.go，分片构建与首屏查询基准 |
+| line_index_bench_test.go | line_index_test.go，模型行索引与可选外部语料基准 |
+
+106 个 textedit 声明全部保留，其中 12 个仅迁移文件；代码 token、注释、基准名称、
+计时范围和可选语料条件均保持。基准单次运行仅检查入口与断言可执行，不据此宣称性能变化；
+外部语料基准本轮未执行。
