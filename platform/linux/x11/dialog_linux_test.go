@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/golang-gui/goui/platform/common"
 )
 
 // 无需桌面：独立 helper 经真实 exec 边界模拟 stdout、成功时的 stderr 警告、
@@ -61,6 +63,28 @@ func TestDialogOwnerArguments(t *testing.T) {
 	} {
 		if got := dialogOwnerArgs(test.helper, 1234); !reflect.DeepEqual(got, test.want) {
 			t.Fatalf("helper=%d owner 参数=%v", test.helper, got)
+		}
+	}
+}
+
+func TestDialogNativeFilterArguments(t *testing.T) {
+	if got := (&fileDialog{}).FilterFormat(); got != common.FileFilterGlob {
+		t.Fatalf("X11 未报告实际过滤格式：%v", got)
+	}
+	filters := []common.FileFilter{
+		{Name: "Text", Values: []string{"*.[tT][xX][tT]", "*.[mM][dD]"}},
+		{Name: "All files", Values: []string{"*"}},
+	}
+	for _, test := range []struct {
+		helper dialogHelper
+		want   []string
+	}{
+		{dialogZenity, []string{"--file-filter=Text|*.[tT][xX][tT] *.[mM][dD]", "--file-filter=All files|*"}},
+		{dialogYad, []string{"--file-filter=Text|*.[tT][xX][tT] *.[mM][dD]", "--file-filter=All files|*"}},
+		{dialogKdialog, []string{"--filter", "Text (*.[tT][xX][tT] *.[mM][dD])|*.[tT][xX][tT] *.[mM][dD]", "--filter", "All files (*)|*"}},
+	} {
+		if got := buildFilterArgs(test.helper, filters); !reflect.DeepEqual(got, test.want) {
+			t.Fatalf("helper=%d 原生条件被改写：%v，预期=%v", test.helper, got, test.want)
 		}
 	}
 }

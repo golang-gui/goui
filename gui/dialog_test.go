@@ -2,6 +2,8 @@ package gui
 
 import (
 	"errors"
+	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -14,6 +16,14 @@ type dialogTestNative struct {
 	result  []platform.FileAccess
 	options platform.DialogOptions
 	err     error
+	format  platform.FileFilterFormat
+}
+
+func (d *dialogTestNative) FilterFormat() platform.FileFilterFormat {
+	if d.format == platform.FileFilterUnknown {
+		return platform.FileFilterGlob
+	}
+	return d.format
 }
 
 func (d *dialogTestNative) OpenFile(_ platform.Window, opts platform.DialogOptions, cb func([]platform.FileAccess, error)) {
@@ -85,6 +95,8 @@ type dialogPendingNative struct {
 	complete func([]platform.FileAccess, error)
 	starts   int
 }
+
+func (*dialogPendingNative) FilterFormat() platform.FileFilterFormat { return platform.FileFilterGlob }
 
 func (d *dialogPendingNative) OpenFile(owner platform.Window, _ platform.DialogOptions, cb func([]platform.FileAccess, error)) {
 	d.starts++
@@ -231,15 +243,132 @@ func TestFileDialogSnapshotsOptionsBeforePosting(t *testing.T) {
 	native := &dialogTestNative{}
 	loop := &settingsTestLoop{posts: make(chan func(), 8)}
 	dialog := newFileDialog(native, loop, nil)
-	opts := DialogOptions{Filters: []FileFilter{{Name: "Text", Patterns: []string{"*.txt"}}}}
+	opts := DialogOptions{Filters: []FileFilter{{Name: "Text", Extensions: []string{"txt"}}}}
 	dialog.OpenFile(nil, opts, func([]FileAccess, error) {})
 	opts.Filters[0].Name = "Changed"
-	opts.Filters[0].Patterns[0] = "*.bad"
+	opts.Filters[0].Extensions[0] = "bad"
 	(<-loop.posts)()
-	if native.options.Filters[0].Name != "Text" || native.options.Filters[0].Patterns[0] != "*.txt" {
+	if native.options.Filters[0].Name != "Text" || native.options.Filters[0].Values[0] != "*.[tT][xX][tT]" {
 		t.Fatalf("异步启动读取了调用方修改后的选项：%v", native.options)
 	}
 	(<-loop.posts)()
+}
+
+func TestFileDialogExtensionAdaptation(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		format platform.FileFilterFormat
+		values []string
+		all    []string
+	}{
+		{"区分大小写的 glob", platform.FileFilterGlob, []string{"*.[tT][xX][tT]", "*.[mM][dD]", "*.[xX]-1"}, []string{"*"}},
+		{"不区分大小写的 wildcard", platform.FileFilterWildcard, []string{"*.txt", "*.md", "*.x-1"}, []string{"*.*"}},
+		{"原生扩展名", platform.FileFilterExtension, []string{"txt", "md", "x-1"}, []string{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			native := &dialogTestNative{format: test.format}
+			dialog := newFileDialog(native, nil, nil).(*fileDialog)
+			opts := DialogOptions{
+				Title: "选择", InitialDir: "/files", DefaultName: "report.md", AllowMultiple: true,
+				Filters: []FileFilter{{Name: "文本", Extensions: []string{"TXT", "md", "txt", "x-1"}}, {Name: "全部"}},
+			}
+			got, err := dialog.nativeOptions(opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := platform.DialogOptions{
+				Title: opts.Title, InitialDir: opts.InitialDir, DefaultName: opts.DefaultName, AllowMultiple: true,
+				Filters: []platform.FileFilter{{Name: "文本", Values: test.values}, {Name: "全部", Values: test.all}},
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("原生参数=%#v，预期=%#v", got, want)
+			}
+			if !reflect.DeepEqual(opts.Filters[0].Extensions, []string{"TXT", "md", "txt", "x-1"}) {
+				t.Fatal("规范化改写了调用方的扩展名")
+			}
+		})
+	}
+	// 以明确的文件名预期核对 GUI 生成的 Linux 条件，不只比较字符串形状。
+	dialog := newFileDialog(&dialogTestNative{}, nil, nil).(*fileDialog)
+	opts, err := dialog.nativeOptions(DialogOptions{Filters: []FileFilter{{Extensions: []string{"txt", "md"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name string
+		want bool
+	}{
+		{"report.txt", true}, {"report.TXT", true}, {"report.TxT", true}, {"文档.Md", true},
+		{"report.txt.bak", false}, {"report.html", false}, {"README", false}, {"reporttxt", false},
+	} {
+		matched := false
+		for _, pattern := range opts.Filters[0].Values {
+			ok, err := filepath.Match(pattern, test.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			matched = matched || ok
+		}
+		if matched != test.want {
+			t.Errorf("文件 %q 匹配=%t，预期=%t", test.name, matched, test.want)
+		}
+	}
+}
+
+func TestFileDialogRejectsInvalidExtensionsBeforeModal(t *testing.T) {
+	for _, extension := range []string{"", ".txt", "*.txt", "tar.gz", "a?", "[a]", "a/b", "a\\b", "txt;md", "txt|md", " txt", "t xt", "txt\n", "x\x00", "\xff"} {
+		t.Run(extension, func(t *testing.T) {
+			w, _, _, _, _, _, _ := modalFixture(t)
+			w.platformWindow = &showTestWindow{}
+			native := &dialogPendingNative{}
+			loop := &settingsTestLoop{posts: make(chan func(), 4)}
+			dialog := newFileDialog(native, loop, nil)
+			for _, call := range []func(Surface, DialogOptions, func([]FileAccess, error)){dialog.OpenFile, dialog.SaveFile} {
+				count := 0
+				call(w, DialogOptions{Filters: []FileFilter{{Extensions: []string{extension}}}}, func(access []FileAccess, err error) {
+					count++
+					if err == nil || len(access) != 0 {
+						t.Fatalf("非法扩展名被当作成功或取消：%v %v", access, err)
+					}
+				})
+				if count != 0 || native.starts != 0 || modalRootBlocked(w) {
+					t.Fatal("参数错误同步回调、启动面板或阻塞了 owner")
+				}
+				(<-loop.posts)()
+				if count != 1 || len(loop.posts) != 0 {
+					t.Fatal("参数错误没有通过正常队列仅交付一次")
+				}
+			}
+		})
+	}
+}
+
+func TestFileDialogDirectoryIgnoresFileFilters(t *testing.T) {
+	native := &dialogTestNative{}
+	loop := &settingsTestLoop{posts: make(chan func(), 4)}
+	dialog := newFileDialog(native, loop, nil)
+	dialog.OpenDirectory(nil, DialogOptions{Filters: []FileFilter{{Extensions: []string{"*.bad"}}}}, func(_ []FileAccess, err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	(<-loop.posts)()
+	(<-loop.posts)()
+	if len(native.options.Filters) != 0 {
+		t.Fatal("目录选择收到了文件过滤条件")
+	}
+}
+
+func TestFileDialogUnknownNativeFilterFormat(t *testing.T) {
+	dialog := newFileDialog(&dialogTestNative{format: platform.FileFilterFormat(255)}, nil, nil).(*fileDialog)
+	if _, err := dialog.nativeOptions(DialogOptions{}); err != nil {
+		t.Fatalf("无过滤的操作不应要求过滤能力：%v", err)
+	}
+	for _, filter := range []FileFilter{{Extensions: []string{"txt"}}, {Name: "All files"}} {
+		if _, err := dialog.nativeOptions(DialogOptions{Filters: []FileFilter{filter}}); !errors.Is(err, platform.ErrUnsupported) {
+			t.Fatalf("未知格式未报告能力缺失：%v", err)
+		}
+	}
 }
 
 func TestFileDialogClosesUndeliveredAccessAtLoopExit(t *testing.T) {

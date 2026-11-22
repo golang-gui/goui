@@ -4,15 +4,31 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/golang-gui/goui/platform"
 )
 
-// FileFilter defines a file type filter for dialog boxes.
-type FileFilter = platform.FileFilter
+// FileFilter selects file extensions without a leading dot or wildcards.
+// Extensions are single suffixes, such as "txt" or "png"; ASCII letters are
+// matched case-insensitively. An empty list allows all files. Filters aid native
+// selection, not content validation; callers must validate selected files.
+// Native presentation of multiple named filters may differ between platforms.
+type FileFilter struct {
+	Name       string
+	Extensions []string
+}
 
 // DialogOptions configures a native file dialog.
-type DialogOptions = platform.DialogOptions
+type DialogOptions struct {
+	Title         string       // Empty uses the native title.
+	InitialDir    string       // Empty uses the native initial directory.
+	DefaultName   string       // Complete suggested save filename, including extension.
+	Filters       []FileFilter // Empty leaves file types unrestricted; ignored for directories.
+	AllowMultiple bool         // Only effective for OpenFile.
+}
 
 // FileAccess owns a selected file/directory's native access. Use on the GUI
 // thread and Close only after all I/O finishes. See platform.FileAccess.
@@ -59,29 +75,39 @@ func newFileDialog(dlg platform.FileDialog, loop platform.EventLoop, err error) 
 
 // OpenFile opens an owner-modal or unowned native file picker.
 func (fd *fileDialog) OpenFile(owner Surface, opts DialogOptions, cb func([]FileAccess, error)) {
-	fd.open(owner, opts, cb, func(w platform.Window, o DialogOptions, done func([]FileAccess, error)) { fd.dlg.OpenFile(w, o, done) })
+	fd.open(owner, opts, cb, func(w platform.Window, o platform.DialogOptions, done func([]FileAccess, error)) {
+		fd.dlg.OpenFile(w, o, done)
+	})
 }
 
 func (fd *fileDialog) OpenDirectory(owner Surface, opts DialogOptions, cb func([]FileAccess, error)) {
-	fd.open(owner, opts, cb, func(w platform.Window, o DialogOptions, done func([]FileAccess, error)) {
+	opts.Filters = nil
+	fd.open(owner, opts, cb, func(w platform.Window, o platform.DialogOptions, done func([]FileAccess, error)) {
 		fd.dlg.OpenDirectory(w, o, done)
 	})
 }
 
 func (fd *fileDialog) SaveFile(owner Surface, opts DialogOptions, cb func([]FileAccess, error)) {
-	fd.open(owner, opts, cb, func(w platform.Window, o DialogOptions, done func([]FileAccess, error)) { fd.dlg.SaveFile(w, o, done) })
+	fd.open(owner, opts, cb, func(w platform.Window, o platform.DialogOptions, done func([]FileAccess, error)) {
+		fd.dlg.SaveFile(w, o, done)
+	})
 }
 
 // ErrDialogBusy means this window already owns a file-selection operation.
 var ErrDialogBusy = errors.New("file dialog: owner already has an active dialog")
 
-func (fd *fileDialog) open(owner Surface, opts DialogOptions, cb func([]FileAccess, error), start func(platform.Window, DialogOptions, func([]FileAccess, error))) {
+func (fd *fileDialog) open(owner Surface, opts DialogOptions, cb func([]FileAccess, error), start func(platform.Window, platform.DialogOptions, func([]FileAccess, error))) {
 	if cb == nil {
 		panic("gui: nil file dialog callback")
 	}
 	fail := func(err error) { fd.loop.Post(func() { cb(nil, err) }) }
 	if fd.dlg == nil {
 		fail(fd.err)
+		return
+	}
+	options, err := fd.nativeOptions(opts)
+	if err != nil {
+		fail(err)
 		return
 	}
 	var w *surfaceBase
@@ -102,11 +128,6 @@ func (fd *fileDialog) open(owner Surface, opts DialogOptions, cb func([]FileAcce
 			return
 		}
 		blockModalInput(w.owner())
-	}
-	// Options outlive this call once startup has been posted.
-	opts.Filters = slices.Clone(opts.Filters)
-	for i := range opts.Filters {
-		opts.Filters[i].Patterns = slices.Clone(opts.Filters[i].Patterns)
 	}
 	// Native backends retain their resources until completion. Keep the input
 	// boundary through the posted completion, and remove it before application code.
@@ -156,8 +177,76 @@ func (fd *fileDialog) open(owner Surface, opts DialogOptions, cb func([]FileAcce
 			}
 			native = w.platformWindow
 		}
-		start(native, opts, finish)
+		start(native, options, finish)
 	})
+}
+
+// Build caller-independent native values before posting startup. The backend
+// reports syntax; extension validation and case adaptation belong to the GUI.
+func (fd *fileDialog) nativeOptions(opts DialogOptions) (platform.DialogOptions, error) {
+	native := platform.DialogOptions{
+		Title: opts.Title, InitialDir: opts.InitialDir, DefaultName: opts.DefaultName,
+		AllowMultiple: opts.AllowMultiple,
+	}
+	if len(opts.Filters) == 0 {
+		return native, nil
+	}
+	format := fd.dlg.FilterFormat()
+	if format != platform.FileFilterGlob && format != platform.FileFilterWildcard && format != platform.FileFilterExtension {
+		return native, fmt.Errorf("file dialog filters: %w", platform.ErrUnsupported)
+	}
+	native.Filters = make([]platform.FileFilter, len(opts.Filters))
+	for i, filter := range opts.Filters {
+		if !utf8.ValidString(filter.Name) || strings.ContainsRune(filter.Name, 0) {
+			return platform.DialogOptions{}, fmt.Errorf("file dialog filter %d: invalid name", i)
+		}
+		values := make([]string, 0, len(filter.Extensions))
+		for _, extension := range filter.Extensions {
+			if extension == "" || !utf8.ValidString(extension) || strings.ContainsAny(extension, ".*?[]{}<>:\"/\\|;") || strings.ContainsFunc(extension, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+				return platform.DialogOptions{}, fmt.Errorf("file dialog filter %d: invalid extension %q", i, extension)
+			}
+			extension = strings.Map(func(r rune) rune {
+				if r >= 'A' && r <= 'Z' {
+					return r + ('a' - 'A')
+				}
+				return r
+			}, extension)
+			var value string
+			switch format {
+			case platform.FileFilterGlob:
+				var pattern strings.Builder
+				pattern.WriteString("*.")
+				for _, r := range extension {
+					if r >= 'a' && r <= 'z' {
+						pattern.WriteRune('[')
+						pattern.WriteRune(r)
+						pattern.WriteRune(r - ('a' - 'A'))
+						pattern.WriteRune(']')
+					} else {
+						pattern.WriteRune(r)
+					}
+				}
+				value = pattern.String()
+			case platform.FileFilterWildcard:
+				value = "*." + extension
+			case platform.FileFilterExtension:
+				value = extension
+			}
+			if !slices.Contains(values, value) {
+				values = append(values, value)
+			}
+		}
+		if len(values) == 0 {
+			switch format {
+			case platform.FileFilterGlob:
+				values = []string{"*"}
+			case platform.FileFilterWildcard:
+				values = []string{"*.*"}
+			}
+		}
+		native.Filters[i] = platform.FileFilter{Name: filter.Name, Values: values}
+	}
+	return native, nil
 }
 
 // Results remain GUI-owned until their posted callback transfers ownership.

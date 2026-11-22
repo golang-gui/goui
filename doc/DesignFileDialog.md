@@ -18,15 +18,16 @@ Linux 已接入 godbus + Portal FileChooser，并保留 helper 降级；详细�
 
 ```go
 type FileDialog interface {
-    OpenFile(owner Window, opts DialogOptions, cb func([]FileAccess, error))
-    OpenDirectory(owner Window, opts DialogOptions, cb func([]FileAccess, error))
-    SaveFile(owner Window, opts DialogOptions, cb func([]FileAccess, error))
+    OpenFile(owner Surface, opts DialogOptions, cb func([]FileAccess, error))
+    OpenDirectory(owner Surface, opts DialogOptions, cb func([]FileAccess, error))
+    SaveFile(owner Surface, opts DialogOptions, cb func([]FileAccess, error))
     RestoreAccess(credential []byte) (FileAccess, error)
 }
 ```
 
 DialogOptions 包含 Title、InitialDir、DefaultName、Filters、AllowMultiple；
-FileFilter 包含 Name 与 Patterns。GUI 用平台值类型别名重导出，不复制一套枚举。
+FileFilter 包含 Name 与 Extensions。FileFilter／DialogOptions 由 GUI 定义，UI 使用
+GUI 类型别名；FileAccess 继续复用平台访问资源契约。平台过滤参数单独表达原生事实。
 
 GUI 完成回调经 EventLoop.Post 执行，正常运行时在 GUI 线程交付一次结果；
 不能假定 platform 回调总是异步。取消为空结果加 nil error，不导出 ErrCancelled。
@@ -34,6 +35,78 @@ GUI 完成回调经 EventLoop.Post 执行，正常运行时在 GUI 线程交付�
 
 SaveFile 仅选择目标，不创建或写文件。成功返回的每个 FileAccess 属于调用方，
 独立于面板和 owner 生命周期；所有 I/O 结束后显式 Close，不能依赖 GC。
+
+## 扩展名过滤（2026-11-22）
+
+基础接口取桌面三平台能够共同表达的扩展名筛选，不提供任意文件名 glob：
+
+```go
+type FileFilter struct {
+    Name       string
+    Extensions []string
+}
+
+opts := gui.DialogOptions{
+    DefaultName: "untitled.txt",
+    Filters: []gui.FileFilter{
+        {Name: "Text", Extensions: []string{"txt", "md"}},
+        {Name: "All files"},
+    },
+}
+```
+
+迁移时将 `Patterns: []string{"*.txt", "*.md"}` 改为
+`Extensions: []string{"txt", "md"}`；原 `Patterns: []string{"*"}` 改为空扩展名列表。
+
+- 每项是单段扩展名，例如 `txt`、`md`、`jpg`；不带前导点，不含通配符。
+  复合后缀如 `tar.gz` 不属于本轮基础契约，不能悄悄改为 `gz`。
+- 同组扩展名取“或”；ASCII 英文字母大小写不敏感，GUI 规范化后去重且保留顺序。
+  不承诺跨平台 Unicode case folding 或内容类型识别的完全一致性。
+- Extensions 为空表示该组允许所有文件，包括无扩展名文件；Filters 为空表示
+  不设置过滤。切片中的空字符串不是“所有文件”，而是参数错误。
+- 不接受点、路径分隔符、通配／分组符、原生过滤分隔符、Windows 文件名保留符、
+  空白、控制字符及无效 UTF-8。错误在原生启动、owner 输入阻塞前发现，沿既有
+  GUI 完成队列交付一次；不当作用户取消。OpenDirectory 忽略文件过滤条件。
+- 目录导航不因文件过滤受限。过滤用于辅助选择，不构成结果或内容校验；原生
+  选择器可能允许手动输入其他文件，调用方仍须校验实际支持的文件及其内容。
+- Name 是原生过滤器显示名；命名分组的呈现不是统一的格式选择 API。
+  Windows／Linux 通常提供分组切换；macOS 现有 AppKit 接口只接收一个类型集合，
+  因而合并各组，有任意“所有文件”组时整个集合不受限。需要三平台共同的限定时，
+  使用一个包含全部目标扩展名的组；本轮不增加 accessory view 或所选格式结果。
+- DefaultName 仍是保存面板的完整建议文件名。GOUI 不从 Extensions 隐式推导默认
+  保存扩展名，也不在返回后追加或替换扩展名；原生面板自己的补全和确认行为保留。
+  返回 FileAccess 始终对应最终确认目标，避免覆盖确认与访问资源指向不同文件。
+
+### 分层与原生表达
+
+platform.FileDialog.FilterFormat 报告该对象及其降级路径接受的原生过滤格式。
+platform.FileFilter.Values 只承载该格式的值；平台后端不解释 GUI 扩展名规则，
+也不决定大小写策略。GUI 在投递前校验并生成独立选项，不按 GOOS 猜测后端。
+
+| 原生格式事实 | GUI 生成的限定条件 | “所有文件” |
+| --- | --- | --- |
+| FileFilterGlob：大小写敏感且支持字符集合的 glob | `txt` → `*.[tT][xX][tT]` | `*` |
+| FileFilterWildcard：大小写不敏感的原生 wildcard | `txt` → `*.txt` | `*.*` |
+| FileFilterExtension：原生扩展名列表 | `txt` → `txt` | 空列表，AppKit 映射为 nil |
+
+Linux 的 Portal 和既有 GTK／KDE helper 使用第一种表达；Windows 使用第二种；
+macOS 使用第三种。原生格式未知时，有过滤条件的操作报告 ErrUnsupported；
+不带过滤的操作仍可执行。GUI 选项及转换后的切片相互隔离，异步启动不读取调用方
+后续修改的数据。MIME、UTI 或更一般的文件名条件有实际需求时再设计具名可选能力，
+不把平台专属语法塞回 Extensions。Android／iOS 当前 FileDialog 仍不受支持。
+
+参考与证据：GTK4 的
+[add_suffix](https://docs.gtk.org/gtk4/method.FileFilter.add_suffix.html) 区分后缀与模式，
+其后缀匹配不区分大小写；GOUI 采用后缀入口，但基础契约先限于单段扩展名。
+[Portal FileChooser v4](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.FileChooser.html)
+明确 glob 区分大小写并提供字符集合写法；GTK 3.24.49
+[文件过滤源码](https://github.com/GNOME/gtk/blob/3.24.49/gtk/gtkfilefilter.c) 使用
+`_gtk_fnmatch`，其字符集合处理见同版本 `gtk/fnmatch.c`。
+Windows 的 [SetFileTypes](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ifiledialog-setfiletypes)
+接收过滤模式；AppKit 的
+[allowedFileTypes](https://developer.apple.com/documentation/appkit/nssavepanel/allowedfiletypes)
+接收扩展名／UTI，nil 表示全部类型，不接收 `*.txt`。以上是官方契约与源码依据，
+不是原生运行验收；本轮实际验证范围见 Plan。
 
 ## 访问对象
 
@@ -124,7 +197,7 @@ helper 降级仍只承诺现有 GUI 内容输入隔离，其原生激活限制�
 | Title | title 字符串，空值保留为空，由后端选择默认表现 |
 | InitialDir | current_folder，文件系统路径字节加末尾 NUL，D-Bus 类型 ay |
 | DefaultName | SaveFile 的 current_name；其他操作忽略 |
-| Filters | a(sa(us))；Name 为显示名，每个 Patterns 元素按 type=0 的 glob 条件传递 |
+| Filters | GUI 根据 FilterFormat 生成原生 Values；Portal 编码为 a(sa(us))，每个值按 type=0 的 glob 条件传递 |
 
 每个请求传唯一且不可猜测的 handle_token，不把 Widget ID、窗口标题或用户路径当作
 请求标识。参数在启动前复制，worker 不读取调用方仍可修改的切片。无 owner 时不能

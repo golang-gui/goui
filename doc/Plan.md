@@ -1,5 +1,23 @@
 # Plan
 
+## FileDialog 扩展名过滤（2026-11-22）
+
+- [x] GUI FileFilter 改为 Name／Extensions，DialogOptions 由 GUI 定义、UI 继续薄别名；
+  单段扩展名不带点或通配符，ASCII 大小写不敏感，同组取“或”，空列表允许全部文件。
+  复合后缀、Unicode case folding 及专属类型条件不进入本轮基础契约。
+- [x] 平台 FilterFormat 报告 glob／wildcard／extension 原生格式，Values 接收原生值；
+  GUI 校验、规范化、去重并生成对应条件，不按 GOOS 猜测，不在后端决定 GUI 过滤规则。
+  macOS 修复把 glob 当原生扩展名传入的问题；保留原生合并分组的呈现边界。
+- [x] 扩展既有 GUI／X11／Portal 测试：三种表达、匹配边界、全部文件、非法输入、
+  目录忽略过滤、未知能力、异步参数隔离及错误交付；保存建议文件名原样转交。
+  设计、原生契约与 API 迁移见 [DesignFileDialog](DesignFileDialog.md#扩展名过滤2026-11-22)。
+- [x] Linux amd64，Go 1.25.8，`go test -json ./... -count=1`：6340 项测试／子测试
+  通过、82 个有测试包通过、156 个无测试包单列，零失败、零条件跳过。
+  既有 X11 测试会创建私有窗口及 selection；未修改用户设置。
+- [x] `go test -race ./gui ./ui ./platform/linux/x11 ./platform/linux/internal/portal -count=1`
+  及上述包和窗口程序的 `go vet` 通过；Windows amd64、macOS arm64 的 GUI 测试目标
+  与文件选择窗口程序交叉编译通过。
+
 ## 窗口 NoKeepRunning（2026-11-22）
 
 - [x] GUI WindowOptions.NoKeepRunning 默认 false；退出计数仅包含存活的普通窗口，

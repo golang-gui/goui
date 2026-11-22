@@ -42,6 +42,22 @@ func newFileDialog() (common.FileDialog, error) {
 	return fd, nil
 }
 
+func (*fileDialog) FilterFormat() common.FileFilterFormat { return common.FileFilterExtension }
+
+// AppKit accepts one allowed-type list, not named filter groups. A group with
+// no values represents unrestricted native types and makes the union unrestricted.
+func setFileDialogFilters(panel NSSavePanel, filters []common.FileFilter) {
+	var types []string
+	for _, filter := range filters {
+		if len(filter.Values) == 0 {
+			types = nil
+			break
+		}
+		types = append(types, filter.Values...)
+	}
+	AutoReleasePool(func() { panel.SetAllowedFileTypes(types) })
+}
+
 // OpenFile opens a native file-selection dialog for selecting one or more files.
 func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	var panel NSOpenPanel
@@ -59,18 +75,7 @@ func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, c
 		})
 	}
 
-	// Set allowed file types
-	if len(opts.Filters) > 0 {
-		var types []string
-		for _, f := range opts.Filters {
-			for _, p := range f.Patterns {
-				types = append(types, p)
-			}
-		}
-		AutoReleasePool(func() {
-			panel.SetAllowedFileTypes(types)
-		})
-	}
+	setFileDialogFilters(panel.NSSavePanel, opts.Filters)
 
 	// Set initial directory
 	if opts.InitialDir != "" {
@@ -163,18 +168,7 @@ func (fd *fileDialog) SaveFile(owner common.Window, opts common.DialogOptions, c
 		})
 	}
 
-	// Set allowed file types
-	if len(opts.Filters) > 0 {
-		var types []string
-		for _, f := range opts.Filters {
-			for _, p := range f.Patterns {
-				types = append(types, p)
-			}
-		}
-		AutoReleasePool(func() {
-			panel.SetAllowedFileTypes(types)
-		})
-	}
+	setFileDialogFilters(panel, opts.Filters)
 
 	// Set initial directory
 	if opts.InitialDir != "" {
