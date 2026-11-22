@@ -108,7 +108,7 @@ func runSameWindow(expect string, chrome ui.WindowChromeMode, targetFirst bool) 
 					p.ID("input-" + key)
 					pages = append(pages, wui.TabPage(key, p).Title("Document "+key))
 				}
-				bar := wui.TabBar().Target(id).ID(id + "-bar").Reorderable(true).Transferable(true).
+				bar := wui.TabBar(id).ID(id + "-bar").Reorderable(true).Transferable(true).
 					OnTransferError(fail).OnDetachRequest(func(r *wui.TabDetachRequest, handled *bool) {
 					r.Cancel()
 					fail(fmt.Errorf("unexpected detach request"))

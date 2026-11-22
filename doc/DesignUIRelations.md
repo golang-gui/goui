@@ -5,7 +5,7 @@
 
 | 类型 | 入口 | 归属 |
 | --- | --- | --- |
-| Target | 消费者声明 `.Target(id)` | UI 协调层维护持久引用，具体 View 应用业务连接 |
+| Target | 消费者通过构造参数或 `.Target(id)` 声明 | UI 协调层维护持久引用，具体 View 应用业务连接 |
 | Group | 显式声明，范围内默认加入，按需 `.Group(object)` | 具体组维护行为，UI 适配成员来源 |
 | Scope | 宿主默认范围及显式局部声明 | 具体能力维护定义、查找及生命周期 |
 
@@ -16,10 +16,15 @@
 ```go
 ui.HBox(
     wui.TableView(model, columns...).ID("orders"),
-    ui.ScrollBar(layout.DirectionVertical).Target("orders"),
+    ui.ScrollBar(layout.DirectionVertical, "orders"),
 )
-wui.TabBar().Target("pages")
+wui.TabBar("pages")
 ```
+
+ScrollBar(orientation, targetID) 与 TabBar(targetID) 直接接收常用目标参数。
+Target(id) 可在组合时覆盖构造参数或之前的 Target 声明，最后设置者生效；
+两种入口写入同一个目标字段，由 BindTarget 维护持续关联。传入空字符串表示
+未绑定，不产生默认目标，也不改变目标查找范围、生命周期及提交顺序。
 
 具名目标在当前 UI Root 管理的有效 Widget 输出中解析，不跨 Root 查找。
 普通容器及组合不建立额外命名空间。使用最终 Widget.ID，不将仅用于协调的
@@ -108,8 +113,9 @@ CommandScope 建立命名空间：当前定义遮蔽外层同名定义，缺失�
 
 | 旧接口 | 新接口 |
 | --- | --- |
-| ScrollGroup / ScrollGroupBinding | 移除，ScrollBar.Target(id)；宿主不再登记 |
-| TabBar(viewID) | TabBar().Target(viewID) |
+| ScrollGroup / ScrollGroupBinding | 移除，ScrollBar(axis, id)；宿主不再登记 |
+| ScrollBar(axis).Target(id) | ScrollBar(axis, id) |
+| TabBar().Target(id) | TabBar(id) |
 | 每控件 AfterUpdate + FindWidget | BindTarget |
 | CommandGroup / CommandGroupView | CommandScope / CommandScopeView |
 

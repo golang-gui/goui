@@ -31,19 +31,19 @@ type scrollBarViewState struct {
 	released bool
 }
 
-// ScrollBar creates a control for one axis of its Target. Without a target it
-// has no range. Built-in bars are hidden explicitly through
-// the host's HScrollBarOptions or VScrollBarOptions.
-func ScrollBar(orientation layout.Direction) *ScrollBarView {
+// ScrollBar creates a control for one axis of the target Widget ID. An empty
+// targetID leaves it unbound with no range. Target can override this declaration.
+// Built-in bars are hidden through the host's HScrollBarOptions or VScrollBarOptions.
+func ScrollBar(orientation layout.Direction, targetID string) *ScrollBarView {
 	if orientation != layout.DirectionHorizontal && orientation != layout.DirectionVertical {
 		panic("ui: invalid scrollbar orientation")
 	}
-	v := &ScrollBarView{orientation: orientation}
+	v := &ScrollBarView{orientation: orientation, target: targetID}
 	v.Self = v
 	return v
 }
 
-// Target selects a managed Widget ID in this UI Root. The association follows
+// Target overrides the target Widget ID in this UI Root. The association follows
 // local output replacement without rebuilding the bar. Empty clears it.
 func (v *ScrollBarView) Target(id string) *ScrollBarView { v.target = id; return v }
 

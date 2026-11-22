@@ -1,5 +1,19 @@
 # Plan
 
+## ScrollBar 与 TabBar 构造参数（2026-11-22）
+
+- [x] ScrollBar(orientation, targetID)、TabBar(targetID) 直接声明目标；保留 Target(id)
+  覆盖入口，最后设置者生效，空字符串表示未绑定。两种入口使用同一持久关联。
+- [x] 迁移 Demo、既有测试及窗口用例，同步接口设计和迁移说明；不修改协调、
+  GUI、平台、布局或样式逻辑。现有多宿主回归验证构造参数、链式覆盖及空目标清除。
+- [x] `go test -json ./... -count=1`：6303 项通过，无断言失败或条件跳过；
+  `go test -race ./ui ./widgets/ui -count=1` 及相关包／例程 `go vet` 通过。
+- [x] Linux amd64／独立 X11／xfwm4（关闭合成）／Software／1×，
+  `tests/window/ui/scroll_target -auto` 通过：多条同步、表格双轴、移除／恢复、
+  拖动中替换与旧手势取消、TabView 局部替换及原 TabBar 点击切页。
+- [x] Windows amd64、macOS arm64 的 scroll_target 交叉编译通过；本轮不涉及
+  原生行为或后端改动，两平台原生运行未执行。
+
 ## Target、Group 与 Scope（2026-11-22）
 
 - [x] 写入 [UI 关系设计](DesignUIRelations.md)：Target 为 UI 持久引用；Group 保留

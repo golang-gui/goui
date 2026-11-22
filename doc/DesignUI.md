@@ -210,7 +210,7 @@ wui.CheckButtonGroup(ui.HBox(
 | 接口类别 | 当前做法与结论 |
 | --- | --- |
 | CheckButton.Group | 默认使用最近的作用域，显式对象覆盖默认值，显式 nil 保持独立。 |
-| TabBar().Target(viewID) | 持久关联同一 UI Root 的 TabView；目标局部替换也刷新连接，无须重建 TabBar。 |
+| TabBar(viewID) | 持久关联同一 UI Root 的 TabView；目标局部替换也刷新连接，无须重建 TabBar。 |
 | TextView.Model、ListView／TreeView／TableView.Model、SourceView.Document | 模型可在 Widget 创建前独立存在，具有业务数据与通知生命周期，保留对象。 |
 | MenuItemView、TableColumnView、TabPageView、OverlayItemView、ShortcutView、DragSourceView | 接收的是可在构建期间创建的声明描述，不是尚未创建的运行时 Widget，保留描述对象。 |
 | SourceView.Scheme／CompletionProvider、IconSource | 配色、回调与图像资源可独立于控件创建，保留原有值／对象。 |

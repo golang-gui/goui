@@ -203,15 +203,16 @@ type TabBarView struct {
 	contextMenu              func(string) []*baseui.MenuItemView
 }
 
-// TabBar declares a tab strip. Target associates it with a managed TabView.
-func TabBar() *TabBarView {
-	v := &TabBarView{}
+// TabBar declares a tab strip associated with a managed TabView's Widget ID.
+// An empty targetID leaves it unbound. Target can override this declaration.
+func TabBar(targetID string) *TabBarView {
+	v := &TabBarView{target: targetID}
 	v.Self = v
 	return v
 }
 
-// Target follows a TabView's Widget ID in this UI Root, including local output
-// replacement when the bar itself is not updated. Empty clears the association.
+// Target overrides the TabView's Widget ID in this UI Root. It follows local
+// output replacement even when this View is not updated. Empty clears it.
 func (v *TabBarView) Target(id string) *TabBarView               { v.target = id; return v }
 func (v *TabBarView) Reorderable(value bool) *TabBarView         { v.reorderable = value; return v }
 func (v *TabBarView) Transferable(value bool) *TabBarView        { v.transferable = value; return v }

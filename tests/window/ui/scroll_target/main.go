@@ -315,13 +315,13 @@ func main() {
 					options = ui.ScrollBarOptions{}
 				}
 				return ui.Modify(ui.ScrollView(ui.Image(picture)).ID(fmt.Sprintf("source-%d", v)).HScrollBarOptions(options).VScrollBarOptions(options)).ID("source")
-			}), ui.ScrollBar(layout.DirectionVertical).Target("source").ID("long").Thickness(14).ThumbThickness(6),
-				ui.VBox(ui.ScrollBar(layout.DirectionVertical).Target("source").ID("short").MinSize(8, 180).MaxSize(8, 180)).CrossAlign(layout.CrossStretch),
+			}), ui.ScrollBar(layout.DirectionVertical, "source").ID("long").Thickness(14).ThumbThickness(6),
+				ui.VBox(ui.ScrollBar(layout.DirectionVertical, "source").ID("short").MinSize(8, 180).MaxSize(8, 180)).CrossAlign(layout.CrossStretch),
 			).Spacing(6).CrossAlign(layout.CrossStretch).MainWeight(1),
-			ui.ScrollBar(layout.DirectionHorizontal).Target("source").ID("horizontal"),
+			ui.ScrollBar(layout.DirectionHorizontal, "source").ID("horizontal"),
 		).Spacing(6).CrossAlign(layout.CrossStretch).MainWeight(1)
 		right := ui.VBox(
-			wui.TabBar().Target("pages").ID("tab-bar"),
+			wui.TabBar("pages").ID("tab-bar"),
 			ui.Build(func() ui.View {
 				tabBuilds++
 				v := tabVersion.Get()
@@ -335,9 +335,9 @@ func main() {
 				wui.TableColumn("name", "Name", func(_ widgets.TableRow, value string) ui.View { return ui.Label(value) }).Width(300).MinWidth(300),
 				wui.TableColumn("description", "Description", func(_ widgets.TableRow, value string) ui.View { return ui.Label(value + " fixed column") }).Width(300).MinWidth(300),
 			).ID("table").MainWeight(1).HScrollBarOptions(hidden).VScrollBarOptions(hidden),
-				ui.ScrollBar(layout.DirectionVertical).Target("table").ID("table-v"),
+				ui.ScrollBar(layout.DirectionVertical, "table").ID("table-v"),
 			).Spacing(6).CrossAlign(layout.CrossStretch).MainWeight(1),
-			ui.ScrollBar(layout.DirectionHorizontal).Target("table").ID("table-h"),
+			ui.ScrollBar(layout.DirectionHorizontal, "table").ID("table-h"),
 		).Spacing(6).CrossAlign(layout.CrossStretch).MainWeight(1)
 		root := ui.Root().Windows(ui.Window("scroll").Title("GOUI ScrollTarget").Size(1000, 640).Center(true).Content(ui.VBox(
 			ui.Label("F6 Check   F7 Remove   F8 Replace   F9 Built-in   F10 Reveal   F11 Dark   F12 Tabs"),
