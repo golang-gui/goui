@@ -1363,9 +1363,9 @@ func TestScrollViewExternalClients(t *testing.T) {
 	sv.SetVScrollBarOptions(ScrollBarOptions{Policy: ScrollBarHidden})
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
 	x, y, other := new(scrollClientProbe), new(scrollClientProbe), new(scrollClientProbe)
-	hx := sv.BindScrollBar(layout.DirectionHorizontal, x)
-	hy := sv.BindScrollBar(layout.DirectionVertical, y)
-	ho := sv.BindScrollBar(layout.DirectionVertical, other)
+	hx := sv.BindScroll(layout.DirectionHorizontal, x)
+	hy := sv.BindScroll(layout.DirectionVertical, y)
+	ho := sv.BindScroll(layout.DirectionVertical, other)
 	defer signal.Handles{hx, hy, ho}.Disconnect()
 	if x.maximum != 400 || x.page != 100 || y.maximum != 900 || y.page != 100 {
 		t.Fatal("外部状态没有使用内容视口", x, y)
@@ -1415,7 +1415,7 @@ func TestScrollViewExternalBindingLifetime(t *testing.T) {
 	defer win.Destroy()
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
 	client := new(scrollClientProbe)
-	h := sv.BindScrollBar(layout.DirectionVertical, client)
+	h := sv.BindScroll(layout.DirectionVertical, client)
 	h.Block()
 	h.Block()
 	sv.SetScrollY(50)
@@ -1435,18 +1435,18 @@ func TestScrollViewExternalBindingLifetime(t *testing.T) {
 	h.Disconnect()
 	client.change.Emit(90)
 	sv.SetScrollY(60)
-	if client.value != 50 || sv.ScrollY() != 60 || len(sv.barBindings) != 0 {
+	if client.value != 50 || sv.ScrollY() != 60 || len(sv.clientBindings) != 0 {
 		t.Fatal("解绑后仍有连接")
 	}
-	h = sv.BindScrollBar(layout.DirectionVertical, client)
+	h = sv.BindScroll(layout.DirectionVertical, client)
 	win.Destroy()
-	if len(sv.barBindings) != 0 {
+	if len(sv.clientBindings) != 0 {
 		t.Fatal("宿主销毁后仍保留连接，不能依赖调用方再次解绑")
 	}
 	client.change.Emit(100)
 	h.Unblock()
 	h.Disconnect()
-	if len(sv.barBindings) != 0 {
+	if len(sv.clientBindings) != 0 {
 		t.Fatal("宿主销毁未清除连接")
 	}
 }
@@ -1456,9 +1456,9 @@ func TestScrollViewExternalSyncReentrancy(t *testing.T) {
 	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 1000}})
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
 	first, second := new(scrollClientProbe), new(scrollClientProbe)
-	h := sv.BindScrollBar(layout.DirectionVertical, first)
+	h := sv.BindScroll(layout.DirectionVertical, first)
 	defer h.Disconnect()
-	sv.BindScrollBar(layout.DirectionVertical, second)
+	sv.BindScroll(layout.DirectionVertical, second)
 	once := false
 	first.onSet = func(stage string) {
 		if stage == "max" && !once {
@@ -1489,7 +1489,7 @@ func TestScrollViewExternalSyncUnchangedReentrantLayout(t *testing.T) {
 	sv.SetChild(&mockWidget{size: geometry.Size{Width: 100, Height: 1000}})
 	sv.Arrange(geometry.Rect(0, 0, 100, 100))
 	client := new(scrollClientProbe)
-	h := sv.BindScrollBar(layout.DirectionVertical, client)
+	h := sv.BindScroll(layout.DirectionVertical, client)
 	defer h.Disconnect()
 	client.onSet = func(stage string) {
 		if stage == "max" {
@@ -1524,8 +1524,8 @@ func TestScrollViewExternalCallbackDestroysHost(t *testing.T) {
 					}
 				}
 			}
-			if h := sv.BindScrollBar(layout.DirectionVertical, client); h != nil || len(sv.barBindings) != 0 || client.values != 0 {
-				t.Fatalf("宿主在外部回调中销毁后仍完成了绑定或写入值：handle=%v bindings=%d values=%d destroyed=%t", h, len(sv.barBindings), client.values, sv.Destroyed())
+			if h := sv.BindScroll(layout.DirectionVertical, client); h != nil || len(sv.clientBindings) != 0 || client.values != 0 {
+				t.Fatalf("宿主在外部回调中销毁后仍完成了绑定或写入值：handle=%v bindings=%d values=%d destroyed=%t", h, len(sv.clientBindings), client.values, sv.Destroyed())
 			}
 			win.framePainting = false
 			win.finishDestroy()

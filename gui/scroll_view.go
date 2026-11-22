@@ -2,6 +2,7 @@ package gui
 
 import (
 	"math"
+	"slices"
 
 	"github.com/goexlib/mathx"
 	"github.com/golang-gui/goui/core/geometry"
@@ -32,6 +33,17 @@ type Scrollable interface {
 // to know its host or write the host's scroll state.
 type ScrollIntoViewRequester interface {
 	ConnectScrollIntoView(func(geometry.Rectangle)) signal.Handle
+}
+
+// ScrollClient receives scroll metrics in DIP and emits position requests.
+// Setters must not emit requests. Implementations need not be Widgets. Each
+// client must be associated with only one host axis at a time; multiple clients
+// may control the same axis. All calls and handle operations are GUI-thread-only.
+type ScrollClient interface {
+	SetMax(float32)
+	SetPageSize(float32)
+	SetValue(float32)
+	ConnectChange(func(float32)) signal.Handle
 }
 
 // ScrollDirection selects the axes available for scrolling. Single-axis modes
@@ -84,9 +96,9 @@ type ScrollView struct {
 	dragAutoScroll bool
 	dragMotion     *DragMotionEventController
 	frameInset     float32
-	barBindings    []*scrollBarBinding
+	clientBindings []*scrollClientBinding
 	barRevision    uint64
-	barStates      [2]scrollBarState
+	barStates      [2]scrollAxisState
 	barSyncing     bool
 	barPending     bool
 }
@@ -189,7 +201,7 @@ func NewScrollView() *ScrollView {
 	sv.ConnectUnmount(func() {
 		// Surface destruction detaches its root before destroying widgets.
 		if !sv.scrollBindingAvailable() {
-			for _, binding := range append([]*scrollBarBinding(nil), sv.barBindings...) {
+			for _, binding := range append([]*scrollClientBinding(nil), sv.clientBindings...) {
 				binding.Disconnect()
 			}
 		}
@@ -524,6 +536,52 @@ func (sv *ScrollView) ScrollX() float32 {
 	return sv.scrollX
 }
 
+// BindScroll associates an independently owned client with one scroll axis.
+// It immediately supplies the current metrics without forcing layout. Requests
+// use normal scrolling and always receive the actual, rounded and clamped value.
+// Binding does not change built-in bar options, client layout, style or ownership.
+// Disconnect is idempotent. Block suspends both directions; the final Unblock
+// supplies current metrics. Host destruction disconnects all clients; callers
+// release bindings when clients leave their own lifetime. A nil client or dead
+// host returns nil. An invalid axis panics.
+func (sv *ScrollView) BindScroll(axis layout.Direction, client ScrollClient) signal.Handle {
+	if axis != layout.DirectionHorizontal && axis != layout.DirectionVertical {
+		panic("gui: invalid scroll axis")
+	}
+	if client == nil || !sv.scrollBindingAvailable() {
+		return nil
+	}
+	b := &scrollClientBinding{owner: sv, axis: axis, client: client, dirty: true}
+	sv.clientBindings = append(sv.clientBindings, b)
+	request := client.ConnectChange(func(value float32) {
+		if b.owner == nil || b.blocks != 0 || b.pushing || !sv.scrollBindingAvailable() {
+			return
+		}
+		b.dirty = true
+		if axis == layout.DirectionHorizontal {
+			sv.SetScrollX(value)
+		} else {
+			sv.SetScrollY(value)
+		}
+		sv.syncBars()
+	})
+	// Connecting is external code and may destroy the host before returning.
+	if b.owner == nil || !sv.scrollBindingAvailable() {
+		if request != nil {
+			request.Disconnect()
+		}
+		b.Disconnect()
+		return nil
+	}
+	b.request = request
+	sv.syncBars()
+	if b.owner == nil || !sv.scrollBindingAvailable() {
+		b.Disconnect()
+		return nil
+	}
+	return b
+}
+
 // Scrollable reports whether the content can scroll vertically (content taller
 // than the content area).
 func (sv *ScrollView) Scrollable() bool {
@@ -851,15 +909,15 @@ func (sv *ScrollView) layoutScrollBars(rect geometry.Rectangle) {
 	}
 }
 
-// syncBars pushes the current scroll state into the scrollbars so their thumbs
-// reflect the actual offset and range.
+// syncBars supplies the current scroll state to built-in bars and external
+// clients so each reflects the actual offset and range.
 func (sv *ScrollView) syncBars() {
 	sv.barPending = true
 	if sv.layoutDepth != 0 || sv.revealing || !sv.scrollBindingAvailable() {
 		return
 	}
 	extent, area := sv.scrollRange(), sv.contentAreaSize()
-	states := [2]scrollBarState{{extent.Width, area.Width, sv.scrollX}, {extent.Height, area.Height, sv.scrollY}}
+	states := [2]scrollAxisState{{extent.Width, area.Width, sv.scrollX}, {extent.Height, area.Height, sv.scrollY}}
 	if sv.barStates != states {
 		sv.barStates = states
 		sv.barRevision++
@@ -879,7 +937,7 @@ func (sv *ScrollView) syncBars() {
 		sv.vbar.SetMax(v.max)
 		sv.vbar.SetPageSize(v.page)
 		sv.vbar.SetValue(v.value)
-		for _, binding := range append([]*scrollBarBinding(nil), sv.barBindings...) {
+		for _, binding := range append([]*scrollClientBinding(nil), sv.clientBindings...) {
 			state := v
 			if binding.axis == layout.DirectionHorizontal {
 				state = h
@@ -890,6 +948,83 @@ func (sv *ScrollView) syncBars() {
 			}
 		}
 	}
+}
+
+type scrollAxisState struct{ max, page, value float32 }
+
+type scrollClientBinding struct {
+	owner   *ScrollView
+	axis    layout.Direction
+	client  ScrollClient
+	request signal.Handle
+	blocks  int
+	pushing bool
+	dirty   bool
+	last    scrollAxisState
+}
+
+func (b *scrollClientBinding) Block() { b.blocks++ }
+
+func (b *scrollClientBinding) Unblock() {
+	if b.blocks > 0 {
+		b.blocks--
+		if b.blocks == 0 && b.owner != nil {
+			b.dirty = true
+			b.owner.syncBars()
+		}
+	}
+}
+
+func (b *scrollClientBinding) Disconnect() {
+	if sv := b.owner; sv != nil {
+		b.owner = nil
+		i := slices.Index(sv.clientBindings, b)
+		if i >= 0 {
+			sv.clientBindings = slices.Delete(sv.clientBindings, i, i+1)
+		}
+		b.client = nil
+		if b.request != nil {
+			b.request.Disconnect()
+			b.request = nil
+		}
+	}
+}
+
+func (b *scrollClientBinding) sync(state scrollAxisState, revision uint64) {
+	sv := b.owner
+	if sv == nil || b.blocks != 0 || !b.dirty && b.last == state {
+		return
+	}
+	b.pushing = true
+	defer func() { b.pushing = false }()
+	valid := func() bool {
+		return b.owner == sv && sv.scrollBindingAvailable() && b.blocks == 0 && sv.barRevision == revision
+	}
+	b.client.SetMax(state.max)
+	if !valid() {
+		return
+	}
+	b.client.SetPageSize(state.page)
+	if !valid() {
+		return
+	}
+	b.client.SetValue(state.value)
+	if valid() {
+		b.last, b.dirty = state, false
+	}
+}
+
+// A host can defer widget destruction until its current frame ends. Stop
+// external calls as soon as final host destruction starts, while keeping
+// explicitly bound, temporarily detached widgets usable.
+func (sv *ScrollView) scrollBindingAvailable() bool {
+	if sv.Destroyed() {
+		return false
+	}
+	if host, ok := sv.Root().(interface{ rootState() *rootBase }); ok {
+		return !host.rootState().frameDestroyed
+	}
+	return true
 }
 
 // clampScroll keeps offsets within the outward, representable scroll range.

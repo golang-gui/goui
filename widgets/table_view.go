@@ -154,14 +154,14 @@ func (v *TableView) SetHScrollBarOptions(options gui.ScrollBarOptions) {
 	}
 }
 
-// BindScrollBar associates an external client with the table's scrolling body.
+// BindScroll associates an external client with the table's scrolling body.
 // The table retains ownership of its internal viewport; the external client is
 // independently laid out and is not included in the table's borders or outline.
-func (v *TableView) BindScrollBar(axis layout.Direction, client gui.ScrollBarClient) signal.Handle {
+func (v *TableView) BindScroll(axis layout.Direction, client gui.ScrollClient) signal.Handle {
 	if v.Destroyed() {
 		return nil
 	}
-	return v.scroll.BindScrollBar(axis, client)
+	return v.scroll.BindScroll(axis, client)
 }
 
 // VScrollBarOptions returns the normalized built-in vertical bar options.

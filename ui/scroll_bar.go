@@ -9,7 +9,7 @@ import (
 
 // ScrollHost is the capability required of an external scrollbar's target.
 type ScrollHost interface {
-	BindScrollBar(layout.Direction, gui.ScrollBarClient) signal.Handle
+	BindScroll(layout.Direction, gui.ScrollClient) signal.Handle
 }
 
 // ScrollBarView declares an independently laid out scrollbar associated with
@@ -91,7 +91,7 @@ func (s *scrollBarViewState) setTarget(host ScrollHost, axis layout.Direction) {
 	}
 	s.host, s.axis = host, axis
 	if host != nil {
-		binding := host.BindScrollBar(axis, s.bar)
+		binding := host.BindScroll(axis, s.bar)
 		if s.revision != revision || s.released || s.bar.Destroyed() {
 			if binding != nil {
 				binding.Disconnect()

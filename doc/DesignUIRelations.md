@@ -116,10 +116,12 @@ CommandScope 建立命名空间：当前定义遮蔽外层同名定义，缺失�
 | ScrollGroup / ScrollGroupBinding | 移除，ScrollBar(axis, id)；宿主不再登记 |
 | ScrollBar(axis).Target(id) | ScrollBar(axis, id) |
 | TabBar().Target(id) | TabBar(id) |
+| ScrollBarClient / BindScrollBar | ScrollClient / BindScroll |
 | 每控件 AfterUpdate + FindWidget | BindTarget |
 | CommandGroup / CommandGroupView | CommandScope / CommandScopeView |
 
-ScrollHost 保留为能力接口。TableView 薄转发 BindScrollBar，不暴露内部 ScrollView。
+ScrollHost 保留为能力接口，要求 BindScroll(axis, ScrollClient)。TableView 使用同名
+薄转发，不暴露内部 ScrollView。ScrollClient 不要求 Widget，ScrollBar 只是其一种实现。
 外部绑定不改变内置滚动条 Options、布局、样式或所有权。目标或轴改变结束旧拖动；
 未绑定时清除旧范围。公共 API 变化随相应版本发布迁移说明。
 

@@ -1,5 +1,24 @@
 # Plan
 
+## 外部滚动协议命名与归属（2026-11-22）
+
+- [x] ScrollBarClient 改为 ScrollClient，BindScrollBar 改为 BindScroll；
+  TableView 薄转发及 UI ScrollHost 同步更新，控制端仍不要求 Widget。
+- [x] 接口和连接实现并入 gui/scroll_view.go，移除 gui/scroll_binding.go；
+  ScrollBar 实现断言回归 gui/scroll_bar.go。保留同步、重入、销毁与手势取消契约，
+  不调整布局、样式、内置 Options 或 Target 协调机制。
+- [x] `go test -json ./... -count=1`：6303 项通过，82 个有测试包通过，
+  155 个无测试包单列，无断言失败或条件跳过。首轮独立显示会话提前退出，
+  两项 X11 测试报无法打开显示；修正验证进程生命周期后全仓重跑通过，未改测试。
+  既有 X11 测试创建私有窗口与 selection，未改变用户设置。
+- [x] `go test -race ./gui ./ui ./widgets ./widgets/ui -count=1` 及相关包、
+  窗口程序和 Demo 的 `go vet` 通过。
+- [x] Linux amd64／独立 X11／xfwm4（关闭合成）／Software／1×，
+  `tests/window/ui/scroll_target -auto` 通过：多条同步、表格双轴、移除／恢复、
+  拖动中替换与旧手势取消、TabView 局部替换及原 TabBar 点击切页。
+- [x] Windows amd64、macOS arm64 的 scroll_target 交叉编译通过；
+  本轮不涉及原生行为或后端改动，两平台原生运行未执行。
+
 ## ScrollBar 与 TabBar 构造参数（2026-11-22）
 
 - [x] ScrollBar(orientation, targetID)、TabBar(targetID) 直接声明目标；保留 Target(id)
