@@ -17,6 +17,23 @@
 - [x] `go test -race ./gui ./ui ./platform/linux/x11 ./platform/linux/internal/portal -count=1`
   及上述包和窗口程序的 `go vet` 通过；Windows amd64、macOS arm64 的 GUI 测试目标
   与文件选择窗口程序交叉编译通过。
+- [x] 扩展 [file_dialog](../tests/window/gui/file_dialog/main.go) 独立窗口程序：
+  `-dir` 指定验证目录，Text only／All files／Invalid filter 分别覆盖限定、全部文件和
+  参数错误；补充大小写、多选、无扩展名、分组呈现差异及输入恢复的逐项说明。
+- [x] Linux amd64／独立 X11／xfwm4 4.16.1（关闭合成）／Software／1×，
+  Portal 1.14.4 + GTK 后端 1.14.0：txt／TXT／Md 可选且多选返回完整，txt.bak／
+  README 在限定组中不列出，全部文件组可选 README；非法输入不弹窗且输入恢复。
+  保存返回完整建议文件名且目标未被创建；Cancel 按钮返回空结果／nil，正常退出。
+- [x] 同一 Linux 桌面条件下令 Portal 不可用，zenity 3.42.1 降级路径：
+  限定组的大小写、排除备份后缀／无扩展名、三文件多选、按钮取消与退出通过。
+- [x] Windows 10 19045 amd64／Common Item Dialog／默认应用缩放，macOS 15.7.7
+  arm64／AppKit／默认应用缩放（Retina）：实际面板验证限定扩展名、混合大小写多选、全部文件选择
+  README、非法输入后恢复、完整建议名保存、取消后恢复及退出通过，保存目标均未创建。
+  macOS 同时确认不匹配文件禁用、目录可进入；未增加跨平台分组选择承诺。
+  两平台宿主绘制后端未单独探测；原生选择器可能记录最近使用的文件／目录。
+- [ ] 当前 GTK Portal 后端的一次 Escape 操作返回故障响应 2，GUI 如实交付错误；
+  独立重开后的 Cancel 按钮正常返回取消。Escape 差异尚未进行旧版本对照和根因定位，
+  不计为取消通过；本轮不改写 Portal 响应或增加自动重试。KDE／yad 原生运行未执行。
 
 ## 窗口 NoKeepRunning（2026-11-22）
 

@@ -3,7 +3,8 @@
 // 环境：Linux/X11、Windows 或 macOS 可交互桌面。Linux 优先使用当前 session bus
 // 的 xdg-desktop-portal FileChooser 和桌面后端（如 xdg-desktop-portal-gtk）；
 // 目录选择要求 FileChooser version>=3。Portal 不可用时才降级到 zenity/kdialog/yad。
-// 启动：go run ./tests/window/gui/file_dialog；-log 可指定新日志文件，默认临时文件。
+// 启动：go run ./tests/window/gui/file_dialog；-log 可指定新日志文件，默认临时文件；
+// -dir 指定已有的验证目录。可准备 a.txt、b.TXT、c.Md、d.txt.bak、README 及子目录。
 // 记录 OS、Linux WM、绘制后端及缩放。GOUI_PLAT_PAINTER 可选 software/opengl，
 // Windows 另可 direct2d；GOUI_PLAT_SCALE=2 请求 2x。初始为两个 Native 窗口，
 // A 有选择按钮、计数器和输入框；B 有独立计数器、销毁 A 和退出按钮。
@@ -17,7 +18,8 @@
 //  2. Open folder、Save file 重复第 1 项，选择成功和取消均应恢复输入。
 //     Save 仅选择路径，不创建文件。本例成功后打印所选名称并关闭 FileAccess。
 //     Open file 支持 Ctrl 多选；文件／保存选择器提供 Text 和 All files 过滤器，
-//     切换后应正确展示候选文件，选择多项时逐一打印并释放。
+//     Windows/Linux 可切换分组；macOS 原生类型列表合并分组，此时允许全部文件。
+//     选择多项时逐一打印并释放。
 //  3. Unowned file 打开独立选择器，预期 A、B 都可操作。macOS 为独立 panel，
 //     有 owner 时为 sheet；Linux Portal 无 owner 时不应设置所属窗口和 MODAL hint。
 //  4. A 再次打开选择器，在 B 点击 Destroy A。预期选择器关闭，终端报告
@@ -27,9 +29,14 @@
 //  6. Linux 在单独启动的测试进程中令 session bus 不可达，复验 helper 降级的
 //     选择、取消与 owner 输入隔离；helper 原生激活仍受其实现限制。正常取消和系统
 //     错误不应再次弹出选择器。Portal 与 helper 的结果分开记录，不能互相替代验收。
+//  7. Text only 仅有 txt/md 扩展名条件：a.txt、b.TXT、c.Md 可选，d.txt.bak、
+//     README 不可选或不列出，子目录仍能进入；Ctrl/Cmd 多选应返回完整结果。
+//     All files 不限制扩展名，应能选择 README。Invalid filter 应异步报告参数错误，
+//     不弹出原生面板；随后 Increment A/F5 和重新打开选择器仍可用。
 //
 // 日志记录 open/complete、计数、文本及每秒 tick。副作用：两个窗口、原生选择器、
-// 临时日志；不读取、写入或删除选择的文件，不修改剪贴板/系统设置。
+// 临时日志，原生选择器可能记录最近使用的文件/目录；不读取、写入或删除选择的文件，
+// 不修改剪贴板/系统设置。
 // 复位：重启。退出：B 的 Quit 或关闭 B；正常退出会销毁剩余窗口。
 package main
 
@@ -49,13 +56,14 @@ import (
 
 func main() {
 	path := flag.String("log", "", "新日志路径；默认使用临时文件")
+	dir := flag.String("dir", "", "已有的验证目录；空值使用原生默认目录")
 	flag.Parse()
-	if err := run(*path); err != nil {
+	if err := run(*path, *dir); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(path string) error {
+func run(path, dir string) error {
 	var f *os.File
 	var err error
 	if path == "" {
@@ -74,7 +82,7 @@ func run(path string) error {
 		return err
 	}
 	app.SetStyleSheet(modern.FromSettings(app.Settings()))
-	a, err := app.NewWindow(&gui.WindowOptions{Size: geometry.Size{Width: 620, Height: 460}})
+	a, err := app.NewWindow(&gui.WindowOptions{Size: geometry.Size{Width: 620, Height: 600}})
 	if err != nil {
 		return err
 	}
@@ -133,17 +141,25 @@ func run(path string) error {
 		}
 		switch kind {
 		case "file":
-			dialog.OpenFile(owner, gui.DialogOptions{Title: "GOUI choose file", AllowMultiple: true,
+			dialog.OpenFile(owner, gui.DialogOptions{Title: "GOUI choose file", InitialDir: dir, AllowMultiple: true,
 				Filters: []gui.FileFilter{{Name: "Text", Extensions: []string{"txt", "md"}}, {Name: "All files"}}}, cb)
 		case "folder":
-			dialog.OpenDirectory(owner, gui.DialogOptions{Title: "GOUI choose folder"}, cb)
+			dialog.OpenDirectory(owner, gui.DialogOptions{Title: "GOUI choose folder", InitialDir: dir}, cb)
 		case "save":
-			dialog.SaveFile(owner, gui.DialogOptions{Title: "GOUI choose destination", DefaultName: "goui-modal.txt",
+			dialog.SaveFile(owner, gui.DialogOptions{Title: "GOUI choose destination", InitialDir: dir, DefaultName: "goui-modal.txt",
 				Filters: []gui.FileFilter{{Name: "Text", Extensions: []string{"txt", "md"}}, {Name: "All files"}}}, cb)
+		case "text":
+			dialog.OpenFile(owner, gui.DialogOptions{Title: "GOUI text extensions", InitialDir: dir, AllowMultiple: true,
+				Filters: []gui.FileFilter{{Name: "Text", Extensions: []string{"TXT", "md", "txt"}}}}, cb)
+		case "all":
+			dialog.OpenFile(owner, gui.DialogOptions{Title: "GOUI all files", InitialDir: dir,
+				Filters: []gui.FileFilter{{Name: "All files"}}}, cb)
+		case "invalid":
+			dialog.OpenFile(owner, gui.DialogOptions{Filters: []gui.FileFilter{{Extensions: []string{"*.txt"}}}}, cb)
 		}
 	}
 	rootA := box()
-	for _, w := range []gui.Widget{gui.NewLabel("A: owner-modal file picker"), button("Open file", func() { open("file", true) }), button("Open folder", func() { open("folder", true) }), button("Save file", func() { open("save", true) }), button("Unowned file", func() { open("file", false) }), button("Increment A", incA), labelA, input, tickLabel} {
+	for _, w := range []gui.Widget{gui.NewLabel("A: owner-modal file picker"), button("Open file", func() { open("file", true) }), button("Open folder", func() { open("folder", true) }), button("Save file", func() { open("save", true) }), button("Unowned file", func() { open("file", false) }), button("Text only", func() { open("text", true) }), button("All files", func() { open("all", true) }), button("Invalid filter", func() { open("invalid", true) }), button("Increment A", incA), labelA, input, tickLabel} {
 		rootA.AddChild(w)
 	}
 	a.SetWidget(rootA)
