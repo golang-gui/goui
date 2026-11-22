@@ -107,6 +107,9 @@ DrawLine 只对齐水平/垂直线的法向位置。计算包含当前平移和 
 复合图形需要从最终外框计算内部几何时，可用 Painter.SnapRect 查询同一对齐结果。
 Switch 据此计算滑块圆心和端点，避免矩形轨道与未取整椭圆使用不同中心；
 椭圆半径和中间动画位置仍保留亚像素。查询不改变上述任何图元的默认行为。
+GUI 样式盒形的三个 PaintStyled helper 显式对齐共同外框，包括生成 Path 的混合
+圆角和选边组合；该样式策略不改变任意用户 Path 的行为，详见
+[样式外框对齐](DesignCornerRadius.md#样式外框对齐2026-11-22)。
 窗口验证入口为 [ui/pixel_snap](../tests/window/ui/pixel_snap/main.go)，包含普通/Primary、
 35.25 DIP 高度及真实标题栏符号；Windows 1x 的修复前后对照与其他结果见 Plan。
 

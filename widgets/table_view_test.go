@@ -285,6 +285,10 @@ type tablePixelPainter struct {
 	native graphics.Painter
 }
 
+func (p *tablePixelPainter) SnapRect(r geometry.Rectangle) geometry.Rectangle {
+	return p.native.SnapRect(r)
+}
+
 func (p *tablePixelPainter) FillRect(r geometry.Rectangle, ink graphics.Brush) {
 	p.native.FillRect(r, ink)
 }
