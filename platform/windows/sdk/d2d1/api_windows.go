@@ -75,6 +75,16 @@ func (this *Factory) CreatePathGeometry() (pathGeometry *PathGeometry, hr com.HR
 	return
 }
 
+func (this *Factory) CreateEllipseGeometry(ellipse *Ellipse) (geometry *EllipseGeometry, hr com.HRESULT) {
+	ret, _, _ := this.class().CreateEllipseGeometry.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(ellipse)), uintptr(cgo.Pointer(&geometry)))
+	return geometry, com.HRESULT(ret)
+}
+
+func (this *Factory) CreateRoundedRectangleGeometry(rect *RoundRect) (geometry *RoundedRectangleGeometry, hr com.HRESULT) {
+	ret, _, _ := this.class().CreateRoundedRectangleGeometry.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(rect)), uintptr(cgo.Pointer(&geometry)))
+	return geometry, com.HRESULT(ret)
+}
+
 func (this *Factory) CreateStrokeStyle(props *StrokeStyleProperties, dashs []float32) (style *StrokeStyle, hr com.HRESULT) {
 	ret, _, _ := this.class().CreateStrokeStyle.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(props)), uintptr(cgo.CSlice(dashs)), uintptr(len(dashs)), uintptr(cgo.Pointer(&style)))
 	hr = com.HRESULT(ret)
@@ -474,6 +484,13 @@ type GeometryClass struct {
 type Geometry struct {
 	Resource
 }
+
+func (this *Geometry) Simplify(option GeometrySimplificationOption, transform *Matrix3x2F, tolerance float32, sink *SimplifiedGeometrySink) com.HRESULT {
+	return cgo.CallRet[com.HRESULT]((*GeometryClass)(this.Class).Simplify, this, option, transform, tolerance, sink)
+}
+
+type EllipseGeometry struct{ Geometry }
+type RoundedRectangleGeometry struct{ Geometry }
 
 type PathGeometryClass struct {
 	GeometryClass
