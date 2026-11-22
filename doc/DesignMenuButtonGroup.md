@@ -1,5 +1,7 @@
 # MenuButton 分组与菜单栏组合
 
+通用关系分类见 [Target、Group 与 Scope](DesignUIRelations.md)。本组保留真实布局与菜单协作，按最近组声明隐式加入；普通布局和窗口不自动建立菜单组。本轮不增加 GroupID 或分散成员对象入口。
+
 > 状态：2026-10-30 迁移为局部容器；分组职责另见 [ButtonGroup 设计](DesignButtonGroup.md)。
 
 ## 目的与边界

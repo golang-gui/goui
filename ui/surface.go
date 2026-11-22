@@ -28,7 +28,7 @@ func (SurfaceView) rootView() {}
 // Content sets the root widget declaration.
 func (v SurfaceView) Content(content View) SurfaceView { v.content = content; return v }
 
-// Commands declares the host's default command group, shared with its shortcuts.
+// Commands declares the host's default command scope, shared with its shortcuts.
 func (v SurfaceView) Commands(commands ...*CommandView) SurfaceView {
 	v.commands = slices.Clone(commands)
 	return v
@@ -63,7 +63,7 @@ type hostMount struct {
 	root             *root
 	view             SurfaceView
 	shortcuts        shortcutBindings
-	commands         *commandGroup
+	commands         *commandScope
 	afterPaintHandle signal.Handle
 	destroyHandle    signal.Handle
 	destroying       bool
@@ -78,7 +78,7 @@ func newHostMount(a *app, host gui.Surface, view SurfaceView) *hostMount {
 func (m *hostMount) contentView() View {
 	content := &hostContentView{mount: m, child: m.view.content, shortcuts: m.view.shortcuts}
 	content.Self = content
-	return CommandGroup(content).Commands(m.view.commands...)
+	return CommandScope(content).Commands(m.view.commands...)
 }
 
 func (m *hostMount) connect(onDestroy func()) {
@@ -157,7 +157,7 @@ type hostContentView struct {
 
 func (v *hostContentView) Build(ctx BuildContext) View {
 	ctx.SetState(v.mount)
-	v.mount.commands, _ = FindAncestor[*commandGroup](ctx)
+	v.mount.commands, _ = FindAncestor[*commandScope](ctx)
 	if len(v.shortcuts) != 0 || v.mount.shortcuts.controller != nil {
 		v.mount.shortcuts.update(v.mount.host.Shortcuts(), v.shortcuts, ctx)
 	}

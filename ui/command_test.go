@@ -10,13 +10,13 @@ import (
 	"github.com/golang-gui/goui/platform/events"
 )
 
-func TestCommandGroupSharesOperationAndRetainsIdentity(t *testing.T) {
+func TestCommandScopeSharesOperationAndRetainsIdentity(t *testing.T) {
 	r := newRoot()
 	defer r.unmountHost()
 	w := &overlayInputWindow{testWindow: newTestWindow()}
 	first, current := 0, 0
-	build := func(fn func(), enabled bool) *CommandGroupView {
-		return CommandGroup(VBox(
+	build := func(fn func(), enabled bool) *CommandScopeView {
+		return CommandScope(VBox(
 			MenuButton("Edit").ID("menu").Menu(MenuItem("Copy").Command("copy")),
 			Label("editor"),
 		).Shortcuts(Shortcut(KeyF5).Command("copy"))).Commands(Command("copy").Enabled(enabled).OnActivate(fn))
@@ -59,18 +59,18 @@ func TestCommandGroupSharesOperationAndRetainsIdentity(t *testing.T) {
 	}
 }
 
-func TestCommandGroupShadowFallbackAndRemoval(t *testing.T) {
+func TestCommandScopeShadowFallbackAndRemoval(t *testing.T) {
 	r := newRoot()
 	defer r.unmountHost()
-	makeInner := func(commands ...*CommandView) *CommandGroupView {
-		return CommandGroup(MenuButton("Inner").Menu(MenuItem("Copy").Command("copy"), MenuItem("Other").Command("other"))).Commands(commands...)
+	makeInner := func(commands ...*CommandView) *CommandScopeView {
+		return CommandScope(MenuButton("Inner").Menu(MenuItem("Copy").Command("copy"), MenuItem("Other").Command("other"))).Commands(commands...)
 	}
-	build := func(inner *CommandGroupView) *CommandGroupView {
-		return CommandGroup(inner).Commands(Command("copy"), Command("other"))
+	build := func(inner *CommandScopeView) *CommandScopeView {
+		return CommandScope(inner).Commands(Command("copy"), Command("other"))
 	}
 	menu := r.update(build(makeInner(Command("copy")))).(*gui.MenuButton)
 	inner := menu.Menu().ItemAt(0).Command()
-	outer := r.root.state.(*commandGroup).commands["copy"].command
+	outer := r.root.state.(*commandScope).commands["copy"].command
 	if inner == outer || inner == nil || menu.Menu().ItemAt(1).Command() == nil {
 		t.Fatal("内层遮蔽或外层回退错误")
 	}
@@ -78,7 +78,7 @@ func TestCommandGroupShadowFallbackAndRemoval(t *testing.T) {
 	if menu.Menu().ItemAt(0).Command() != outer || inner.Enabled() {
 		t.Fatal("移除内层定义未回退或旧命令仍启用")
 	}
-	r.update(CommandGroup(makeInner()).Commands())
+	r.update(CommandScope(makeInner()).Commands())
 	if menu.Menu().ItemAt(0).Command().Enabled() {
 		t.Fatal("缺失 ID 执行了已移除目标")
 	}
@@ -88,11 +88,11 @@ func TestCommandGroupShadowFallbackAndRemoval(t *testing.T) {
 	}
 }
 
-func TestCommandGroupUpdatesRetainedDescendants(t *testing.T) {
+func TestCommandScopeUpdatesRetainedDescendants(t *testing.T) {
 	r := newRoot()
 	defer r.unmountHost()
 	menuView := MenuButton("Edit").Menu(MenuItem("Copy").Command("copy"))
-	view := func(commands ...*CommandView) *CommandGroupView { return CommandGroup(menuView).Commands(commands...) }
+	view := func(commands ...*CommandView) *CommandScopeView { return CommandScope(menuView).Commands(commands...) }
 	menu := r.update(view(Command("copy"))).(*gui.MenuButton)
 	original := menu.Menu().ItemAt(0).Command()
 	// 相同子声明与模型保持稳定，依赖作用域通知更新引用。
@@ -107,7 +107,7 @@ func TestCommandGroupUpdatesRetainedDescendants(t *testing.T) {
 	}
 }
 
-func TestCommandGroupRejectsDuplicateDefinitions(t *testing.T) {
+func TestCommandScopeRejectsDuplicateDefinitions(t *testing.T) {
 	for _, views := range [][]*CommandView{{Command("copy"), Command("copy")}, {{id: ""}}} {
 		func() {
 			r := newRoot()
@@ -117,19 +117,19 @@ func TestCommandGroupRejectsDuplicateDefinitions(t *testing.T) {
 					t.Error("接受了重复或空命令定义")
 				}
 			}()
-			r.update(CommandGroup(Label("child")).Commands(views...))
+			r.update(CommandScope(Label("child")).Commands(views...))
 		}()
 	}
 }
 
-func TestCommandGroupContextMenuAndDirectCallbackModes(t *testing.T) {
+func TestCommandScopeContextMenuAndDirectCallbackModes(t *testing.T) {
 	r := newRoot()
 	defer r.unmountHost()
 	var ctx BuildContext
 	probe := objectScope("probe", Label("probe"), func() any { return new(int) })
 	probe.read = func(owner BuildContext) any { ctx = owner; return new(int) }
 	// 使用真实子节点上下文检查内部解析，不访问另一 View 的私有 State。
-	r.update(CommandGroup(probe).Commands(Command("copy")))
+	r.update(CommandScope(probe).Commands(Command("copy")))
 	ctx = &buildContext{node: r.root.body}
 	command, ok := findCommand(ctx, "copy")
 	if !ok {
@@ -151,15 +151,15 @@ func TestCommandGroupContextMenuAndDirectCallbackModes(t *testing.T) {
 	}
 }
 
-func TestCommandGroupTransferRebindsMenuAndShortcut(t *testing.T) {
+func TestCommandScopeTransferRebindsMenuAndShortcut(t *testing.T) {
 	a, b := transferRoots()
 	defer a.unmountHost()
 	defer b.unmountHost()
 	first, second := 0, 0
-	source := a.update(CommandGroup(VBox(
+	source := a.update(CommandScope(VBox(
 		MenuButton("Moving").ID("moving").Menu(MenuItem("Run").Command("run")).Shortcuts(Shortcut(KeyF5).Command("run")),
 	)).Commands(Command("run").OnActivate(func() { first++ }))).(*gui.LinearBox)
-	target := b.update(CommandGroup(VBox(Label("Resident"))).Commands(Command("run").OnActivate(func() { second++ }))).(*gui.LinearBox)
+	target := b.update(CommandScope(VBox(Label("Resident"))).Commands(Command("run").OnActivate(func() { second++ }))).(*gui.LinearBox)
 	moving := source.Children()[0].(*gui.MenuButton)
 	old := moving.Menu().ItemAt(0).Command()
 	model := moving.Menu()
@@ -177,21 +177,21 @@ func TestCommandGroupTransferRebindsMenuAndShortcut(t *testing.T) {
 	}
 }
 
-func TestCommandGroupNotifiesConsumersWithoutRebuildingThem(t *testing.T) {
+func TestCommandScopeNotifiesConsumersWithoutRebuildingThem(t *testing.T) {
 	r := newRoot()
 	defer r.unmountHost()
-	inner := CommandGroup(MenuButton("Inner").Menu(MenuItem("Copy").Command("copy"))).Commands(Command("copy"))
-	menu := r.update(CommandGroup(inner).Commands(Command("copy"))).(*gui.MenuButton)
+	inner := CommandScope(MenuButton("Inner").Menu(MenuItem("Copy").Command("copy"))).Commands(Command("copy"))
+	menu := r.update(CommandScope(inner).Commands(Command("copy"))).(*gui.MenuButton)
 	original := menu.Menu().ItemAt(0).Command()
-	outer := r.root.state.(*commandGroup).commands["copy"].command
+	outer := r.root.state.(*commandScope).commands["copy"].command
 	// 仅更新作用域自己的声明，刻意不协调子节点，验证引用依赖集合通知而非重建副作用。
 	ctx := &buildContext{node: r.root.body}
-	CommandGroup(inner.child).Build(ctx)
+	CommandScope(inner.child).Build(ctx)
 	r.flushAfterUpdate() // 定义在本轮协调结束后发布，保留“不重建后代”的原断言。
 	if menu.Menu().ItemAt(0).Command() != outer || original.Enabled() {
 		t.Fatal("未重建的后代没有跟随定义移除回退")
 	}
-	CommandGroup(inner.child).Commands(Command("copy")).Build(ctx)
+	CommandScope(inner.child).Commands(Command("copy")).Build(ctx)
 	r.flushAfterUpdate()
 	if menu.Menu().ItemAt(0).Command() == outer {
 		t.Fatal("未重建的后代没有跟随同名遮蔽恢复")
@@ -202,21 +202,21 @@ func TestCommandContextMenuTracksScopeWhileObserved(t *testing.T) {
 	r := newRoot()
 	defer r.unmountHost()
 	child := Label("content")
-	r.update(CommandGroup(CommandGroup(child).Commands(Command("copy"))).Commands(Command("copy")))
+	r.update(CommandScope(CommandScope(child).Commands(Command("copy"))).Commands(Command("copy")))
 	ctx := &buildContext{node: r.root.body.body}
 	model := MenuFor(ctx, MenuItem("Copy").Command("copy"))
 	old := model.ItemAt(0).Command()
 	n := 0
 	h := model.ConnectItems(func() { n++ })
 	defer h.Disconnect()
-	CommandGroup(child).Build(&buildContext{node: r.root.body})
+	CommandScope(child).Build(&buildContext{node: r.root.body})
 	r.flushAfterUpdate()
-	outer := r.root.state.(*commandGroup).commands["copy"].command
+	outer := r.root.state.(*commandScope).commands["copy"].command
 	if old.Enabled() || model.ItemAt(0).Command() != outer || n != 1 {
 		t.Fatal("已打开上下文菜单未跟随作用域移除回退")
 	}
 	h.Disconnect()
-	CommandGroup(child).Commands(Command("copy")).Build(&buildContext{node: r.root.body})
+	CommandScope(child).Commands(Command("copy")).Build(&buildContext{node: r.root.body})
 	r.flushAfterUpdate()
 	if n != 1 {
 		t.Fatal("解除模型观察后仍保留作用域通知")
@@ -226,11 +226,11 @@ func TestCommandContextMenuTracksScopeWhileObserved(t *testing.T) {
 func TestCommandShortcutNotificationCanUnmountOwner(t *testing.T) {
 	r := newRoot()
 	defer r.unmountHost()
-	view := func(key Key) *CommandGroupView {
-		return CommandGroup(Label("editor").Shortcuts(Shortcut(key).Command("run"), Shortcut(KeyF6).Command("run"))).Commands(Command("run"))
+	view := func(key Key) *CommandScopeView {
+		return CommandScope(Label("editor").Shortcuts(Shortcut(key).Command("run"), Shortcut(KeyF6).Command("run"))).Commands(Command("run"))
 	}
 	r.update(view(KeyF5))
-	command := r.root.state.(*commandGroup).commands["run"].command
+	command := r.root.state.(*commandScope).commands["run"].command
 	armed := true
 	command.ConnectShortcuts(func() {
 		if armed {
@@ -256,11 +256,11 @@ func TestCommandReferenceLookupCanReleaseOwner(t *testing.T) {
 		}
 		return new(int)
 	}
-	r.update(CommandGroup(child).Commands(Command("run")))
+	r.update(CommandScope(child).Commands(Command("run")))
 	ctx := &buildContext{node: r.root}
 	armed = true
 	// 成员通知会重新解析引用；中间 ObjectView 回调释放 owner 后必须停止旧解析。
-	CommandGroup(child).Build(ctx)
+	CommandScope(child).Build(ctx)
 	r.flushAfterUpdate()
 	if r.root != nil {
 		t.Fatal("查询回调没有完成卸载")
@@ -280,7 +280,7 @@ func TestCommandDescendantDefinitionsAndMoves(t *testing.T) {
 		} else {
 			b.Shortcuts(definition)
 		}
-		return CommandGroup(VBox(
+		return CommandScope(VBox(
 			MenuButton("Run").Menu(MenuItem("Run").Command("run")),
 			HBox(a).Spacing(20),
 			HBox(b).Spacing(20),
@@ -304,14 +304,14 @@ func TestCommandDescendantDefinitionsAndMoves(t *testing.T) {
 		t.Fatalf("回调不是最新声明或重复执行：%d", calls)
 	}
 	// Widget 隐藏不卸载其声明；只有移除定义才注销操作。
-	r.update(CommandGroup(VBox(
+	r.update(CommandScope(VBox(
 		MenuButton("Run").Menu(MenuItem("Run").Command("run")),
 		HBox(Label("hidden").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run").OnActivate(func() { calls++ })))).Visible(false),
 	)))
 	if menu.Menu().ItemAt(0).Command() != command || !command.Enabled() {
 		t.Fatal("隐藏子树注销了仍挂载的定义")
 	}
-	r.update(CommandGroup(VBox(MenuButton("Run").Menu(MenuItem("Run").Command("run")))))
+	r.update(CommandScope(VBox(MenuButton("Run").Menu(MenuItem("Run").Command("run")))))
 	command.Activate()
 	if command.Enabled() || menu.Menu().ItemAt(0).Command().Enabled() || calls != 31 {
 		t.Fatal("卸载后操作或引用没有失效")
@@ -324,9 +324,9 @@ func TestCommandDescendantDefinitionErrors(t *testing.T) {
 		view View
 		want string
 	}{
-		{"outside-scope", MenuButton("Run").Menu(MenuItem("Run").DefineCommand(Command("run"))), "DefineCommand requires an ancestor CommandGroup"},
-		{"siblings", CommandGroup(VBox(MenuButton("A").Menu(MenuItem("Run").DefineCommand(Command("run"))), MenuButton("B").Menu(MenuItem("Run").DefineCommand(Command("run"))))), `duplicate command ID "run"`},
-		{"shorthand-and-descendant", CommandGroup(MenuButton("Run").Menu(MenuItem("Run").DefineCommand(Command("run")))).Commands(Command("run")), `duplicate command ID "run"`},
+		{"outside-scope", MenuButton("Run").Menu(MenuItem("Run").DefineCommand(Command("run"))), "DefineCommand requires an ancestor CommandScope"},
+		{"siblings", CommandScope(VBox(MenuButton("A").Menu(MenuItem("Run").DefineCommand(Command("run"))), MenuButton("B").Menu(MenuItem("Run").DefineCommand(Command("run"))))), `duplicate command ID "run"`},
+		{"shorthand-and-descendant", CommandScope(MenuButton("Run").Menu(MenuItem("Run").DefineCommand(Command("run")))).Commands(Command("run")), `duplicate command ID "run"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newRoot()
@@ -360,7 +360,7 @@ func TestCommandBindEnabledDoesNotRebuildContent(t *testing.T) {
 					item.DefineCommand(d)
 				}
 				box := VBox(MenuButton("Run").Menu(item), child)
-				scope := CommandGroup(box)
+				scope := CommandScope(box)
 				if host == "shortcut" {
 					box.Shortcuts(Shortcut(KeyF5).DefineCommand(d))
 				} else if host == "scope" {
@@ -437,7 +437,7 @@ func TestCommandBindCheckedSharesStateWithoutRebuilding(t *testing.T) {
 					item.DefineCommand(definition)
 				}
 				box := VBox(MenuButton("Menu").Menu(item), Label("editor")).Shortcuts(Shortcut(KeyF5).Command("toggle"))
-				scope := CommandGroup(box)
+				scope := CommandScope(box)
 				if host == "shortcut" {
 					box.Shortcuts(Shortcut(KeyF5).DefineCommand(definition))
 				} else if host == "scope" {
@@ -503,8 +503,8 @@ func TestCommandBindCheckedSharesStateWithoutRebuilding(t *testing.T) {
 func TestCommandCheckedPublicationCanReleaseOwner(t *testing.T) {
 	r := newRoot()
 	defer r.unmountHost()
-	view := func(checkable, checked bool) *CommandGroupView {
-		return CommandGroup(MenuButton("Menu").Menu(MenuItem("Check").Command("toggle"))).Commands(Command("toggle").Checkable(checkable).Checked(checked))
+	view := func(checkable, checked bool) *CommandScopeView {
+		return CommandScope(MenuButton("Menu").Menu(MenuItem("Check").Command("toggle"))).Commands(Command("toggle").Checkable(checkable).Checked(checked))
 	}
 	button := r.update(view(false, false)).(*gui.MenuButton)
 	command := button.Menu().ItemAt(0).Command()
@@ -518,7 +518,7 @@ func TestCommandCheckedPublicationCanReleaseOwner(t *testing.T) {
 func TestCommandCheckedBindingKeysDoNotCollideWithIDs(t *testing.T) {
 	checked, enabled := MakeState(false), MakeState(true)
 	_, fake := bindingApp(t, func() RootView {
-		return Window("main").Content(CommandGroup(MenuButton("Menu").Menu(
+		return Window("main").Content(CommandScope(MenuButton("Menu").Menu(
 			MenuItem("Check").Command("run"), MenuItem("Other").Command("run:checked"),
 		)).Commands(Command("run").Checkable(true).BindChecked(&checked), Command("run:checked").BindEnabled(&enabled)))
 	})
@@ -540,7 +540,7 @@ func TestCommandDescendantLocalAddRemoveAndFallback(t *testing.T) {
 	global, local := 0, 0
 	_, fake := bindingApp(t, func() RootView {
 		global++
-		return Window("main").Content(CommandGroup(CommandGroup(VBox(
+		return Window("main").Content(CommandScope(CommandScope(VBox(
 			MenuButton("Run").Menu(MenuItem("Run").Command("run")),
 			Build(func() View {
 				local++
@@ -572,11 +572,11 @@ func TestCommandDescendantTransferMovesDefinitionAndReferences(t *testing.T) {
 	defer a.unmountHost()
 	defer b.unmountHost()
 	calls := 0
-	source := a.update(CommandGroup(VBox(
+	source := a.update(CommandScope(VBox(
 		MenuButton("Source").Menu(MenuItem("Run").Command("run")),
 		VBox(MenuButton("Moving").Menu(MenuItem("Run").DefineCommand(Command("run").OnActivate(func() { calls++ })))).ID("moving").Shortcuts(Shortcut(KeyF5).Command("run")),
 	))).(*gui.LinearBox)
-	target := b.update(CommandGroup(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))).(*gui.LinearBox)
+	target := b.update(CommandScope(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))).(*gui.LinearBox)
 	moving := source.Children()[1]
 	old := source.Children()[0].(*gui.MenuButton).Menu().ItemAt(0).Command()
 	if err := (&Coordinator{owner: a.root.body}).TransferChild(moving, target, func() error {
@@ -610,10 +610,10 @@ func TestCommandBatchedPublicationCanUnmountScope(t *testing.T) {
 	r := newRoot()
 	defer r.unmountHost()
 	build := func(enabled bool) View {
-		return CommandGroup(MenuButton("Run").Menu(MenuItem("A").DefineCommand(Command("a").Enabled(enabled)), MenuItem("B").DefineCommand(Command("b").Enabled(enabled))))
+		return CommandScope(MenuButton("Run").Menu(MenuItem("A").DefineCommand(Command("a").Enabled(enabled)), MenuItem("B").DefineCommand(Command("b").Enabled(enabled))))
 	}
 	r.update(build(true))
-	s := r.root.state.(*commandGroup)
+	s := r.root.state.(*commandScope)
 	for _, entry := range s.commands {
 		entry.command.ConnectEnabled(func(bool) { r.unmountHost() })
 	}
@@ -628,10 +628,10 @@ func TestCommandBindEnabledFollowsTransferredDefinition(t *testing.T) {
 	checked := MakeState(false)
 	rt, fake := bindingApp(t, func() RootView {
 		return Root().Windows(
-			Window("source").Content(CommandGroup(VBox(
+			Window("source").Content(CommandScope(VBox(
 				VBox(MenuButton("Moving").Menu(MenuItem("Run").DefineCommand(Command("run").BindEnabled(&enabled).Checkable(true).BindChecked(&checked)))).ID("moving"),
 			))),
-			Window("target").Content(CommandGroup(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))),
+			Window("target").Content(CommandScope(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))),
 		)
 	})
 	a, b := rt.windows["source"].root, rt.windows["target"].root
@@ -660,12 +660,12 @@ func TestCommandBindEnabledFollowsTransferredDefinition(t *testing.T) {
 	}
 }
 
-func TestCommandGroupTransferRetainsPendingDefinitions(t *testing.T) {
+func TestCommandScopeTransferRetainsPendingDefinitions(t *testing.T) {
 	a, b := transferRoots()
 	defer a.unmountHost()
 	defer b.unmountHost()
 	// 模拟初次构建已完成、作用域的批次完成钩子尚未执行即发生移交。
-	a.reconcile(VBox(CommandGroup(VBox(
+	a.reconcile(VBox(CommandScope(VBox(
 		MenuButton("Moving").Menu(MenuItem("Run").DefineCommand(Command("run"))),
 	)).ID("scope")))
 	source := a.widget().(*gui.LinearBox)
@@ -709,7 +709,7 @@ func TestCommandEntryDefinitionsShareOperation(t *testing.T) {
 				} else {
 					shortcut.DefineCommand(definition)
 				}
-				return CommandGroup(VBox(MenuButton("Menu").Menu(item), Label("editor")).Shortcuts(shortcut))
+				return CommandScope(VBox(MenuButton("Menu").Menu(item), Label("editor")).Shortcuts(shortcut))
 			}
 			box := r.updateHost(w, build(func() { calls++ }, false, true))
 			button := box.Children()[0].(*gui.MenuButton)
@@ -794,26 +794,26 @@ func TestCommandDefinitionHostErrors(t *testing.T) {
 			var bindings shortcutBindings
 			defer bindings.clear()
 			bindings.update(gui.NewShortcutController(), []*ShortcutView{Shortcut(KeyF5).DefineCommand(Command("run"))})
-		}, "DefineCommand requires a mounted command group"},
+		}, "DefineCommand requires a mounted command scope"},
 		{"shortcut-outside-scope", func() {
 			r := newRoot()
 			defer r.unmountHost()
 			r.update(Label("editor").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run"))))
-		}, "DefineCommand requires an ancestor CommandGroup"},
+		}, "DefineCommand requires an ancestor CommandScope"},
 		{"duplicate-menu-definitions", func() {
 			r := newRoot()
 			defer r.unmountHost()
-			r.update(CommandGroup(MenuButton("Menu").Menu(MenuItem("A").DefineCommand(Command("run")), MenuItem("B").DefineCommand(Command("run")))))
+			r.update(CommandScope(MenuButton("Menu").Menu(MenuItem("A").DefineCommand(Command("run")), MenuItem("B").DefineCommand(Command("run")))))
 		}, `duplicate or empty command ID "run"`},
 		{"duplicate-shortcut-definitions", func() {
 			r := newRoot()
 			defer r.unmountHost()
-			r.update(CommandGroup(Label("editor").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run")), Shortcut(KeyF6).DefineCommand(Command("run")))))
+			r.update(CommandScope(Label("editor").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run")), Shortcut(KeyF6).DefineCommand(Command("run")))))
 		}, `duplicate or empty command ID "run"`},
 		{"duplicate-across-hosts", func() {
 			r := newRoot()
 			defer r.unmountHost()
-			r.update(CommandGroup(MenuButton("Menu").Menu(MenuItem("Run").DefineCommand(Command("run"))).Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run")))))
+			r.update(CommandScope(MenuButton("Menu").Menu(MenuItem("Run").DefineCommand(Command("run"))).Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run")))))
 		}, `duplicate command ID "run"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -851,7 +851,7 @@ func TestCommandDefinitionLookupCanReleaseHost(t *testing.T) {
 					}
 					return new(int)
 				}
-				return CommandGroup(interceptor)
+				return CommandScope(interceptor)
 			}
 			r.update(build())
 			armed = true
@@ -867,10 +867,10 @@ func TestShortcutDefinitionBindingFollowsTransfer(t *testing.T) {
 	enabled := MakeState(true)
 	rt, fake := bindingApp(t, func() RootView {
 		return Root().Windows(
-			Window("source").Content(CommandGroup(VBox(
+			Window("source").Content(CommandScope(VBox(
 				VBox(MenuButton("Moving").Menu(MenuItem("Run").Command("run"))).ID("moving").Shortcuts(Shortcut(KeyF5).DefineCommand(Command("run").BindEnabled(&enabled))),
 			))),
-			Window("target").Content(CommandGroup(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))),
+			Window("target").Content(CommandScope(VBox(MenuButton("Target").Menu(MenuItem("Run").Command("run"))))),
 		)
 	})
 	a, b := rt.windows["source"].root, rt.windows["target"].root
@@ -898,7 +898,7 @@ func TestShortcutDefinitionBindingFollowsTransfer(t *testing.T) {
 }
 
 // 三种声明宿主均进入窗口默认分组，窗口快捷键和菜单在首次绘制前关联同一对象。
-func TestWindowDefaultCommandGroup(t *testing.T) {
+func TestWindowDefaultCommandScope(t *testing.T) {
 	for _, host := range []string{"menu", "shortcut", "window"} {
 		t.Run(host, func(t *testing.T) {
 			enabled := MakeState(true)
@@ -967,10 +967,10 @@ func TestWindowDefaultCommandGroup(t *testing.T) {
 	}
 }
 
-func TestAppFindCommandGroupBoundaries(t *testing.T) {
+func TestAppFindCommandScopeBoundaries(t *testing.T) {
 	rt, fake := bindingApp(t, func() RootView {
 		return Root().Windows(
-			Window("main").Commands(Command("run")).Content(CommandGroup(
+			Window("main").Commands(Command("run")).Content(CommandScope(
 				MenuButton("Local").Menu(MenuItem("Run").DefineCommand(Command("run")), MenuItem("Local only").DefineCommand(Command("local"))),
 			)).Shortcuts(Shortcut(KeyF5).Command("run")),
 			Window("other").Commands(Command("run")),
@@ -991,7 +991,7 @@ func TestAppFindCommandGroupBoundaries(t *testing.T) {
 	}
 }
 
-func TestWindowCommandGroupContentAndDefinitionLifecycle(t *testing.T) {
+func TestWindowCommandScopeContentAndDefinitionLifecycle(t *testing.T) {
 	defined, mode := true, 0
 	rt, fake := bindingApp(t, func() RootView {
 		var content View

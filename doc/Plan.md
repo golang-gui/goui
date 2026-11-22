@@ -1,5 +1,44 @@
 # Plan
 
+## Target、Group 与 Scope（2026-11-22）
+
+- [x] 写入 [UI 关系设计](DesignUIRelations.md)：Target 为 UI 持久引用；Group 保留
+  显式声明与成员默认来源；Scope 表达默认及局部查找范围。
+- [x] BindTarget 复用持久节点、生命周期和批次完成入口；输出挂载后、普通
+  AfterUpdate 前提交。覆盖仅目标局部更新、缺失／重现、输出投影、延迟虚拟行、
+  重名／类型校验、跨 Root 移交、声明清除及回调中销毁。
+- [x] ScrollBar.Target 与 TabBar().Target 使用同一引用能力，移除 ScrollGroup／
+  ScrollGroupBinding；ScrollView／TableView 不登记成员。保留 GUI BindScrollBar、
+  多消费者、轴身份及拖动取消，不改内置 Options、布局、样式或所有权。
+- [x] CommandGroup／CommandGroupView 改为 CommandScope／CommandScopeView；
+  保留宿主默认范围、显式局部范围、命名遮蔽及定义生命周期。现有真正 Group
+  不重写行为，不引入 GroupID。
+- [x] 迁移 Demo、现有标签／命令用例和滚动窗口入口，增加 TabView 局部替换与
+  正常指针切换的断言；同步相关设计及窗口索引。
+
+验证：
+
+- 变更前 `go test -json ./...`：6288 项通过，无条件跳过。
+- 独立会话运行 `env -u GOUI_PLAT_SCALE -u GOUI_PLAT_PAINTER go test -json ./... -count=1`：
+  6303 项通过，82 个有测试包通过，155 个无测试包，无断言失败或条件跳过。
+  初次命令额外固定 GOUI_PLAT_SCALE=1，导致 mobile/TestWindowSurfaceLifecycle
+  的内部 3× 输入被覆盖，断言 Width=300 得到 900；移除验证命令的覆盖后重跑通过，
+  未修改该用例或扩大跳过。既有 X11 测试创建私有窗口与 selection，未改变用户设置。
+- `go test -race ./ui ./widgets/ui -count=1` 及相关 UI／窗口／Demo 的 `go vet` 通过。
+- Linux amd64／X11／xfwm4（关闭合成）／1×：`tests/window/ui/scroll_target -auto`
+  的 Software／Modern 亮色、OpenGL／Modern 暗色和 Software／Basic 全部通过。
+  场景包含长短轨道、图片和表格双轴、缺失／恢复、拖动中替换后的旧手势取消、
+  内外条共存，以及 TabView 局部替换后由原 TabBar 点击切换新版正文。
+  自动场景外层构建始终为 1，引用方 Widget 身份保持。
+- 同环境 OpenGL 桌面鼠标／键盘检查长短条同步、拖动中替换、重新拖动、表格
+  横纵末端及 TabView 替换后的点击切页；画面复核间隔、滑块、裁剪、末行和新正文。
+  既有 UI 同 Root 标签拖动／Esc 取消用例通过，GUI 生命周期 1/0、原 State 保留。
+- `tests/window/ui/commands -auto` 在 Software／1×通过；OpenGL／Modern 暗色
+  实际菜单打开及点击命令计数通过。默认与局部范围的遮蔽／回退、实时启用和
+  勾选由原逻辑及自动窗口回归覆盖。
+- Windows amd64、macOS arm64 的 scroll_target 与 commands 交叉编译通过；
+  两平台原生运行及其他缩放本轮未执行，不计为原生验收。
+
 ## 外部滚动控制与声明式 ScrollGroup（2026-11-21）
 
 - [x] GUI：ScrollBarClient、BindScrollBar、PageSize；内外统一同步、请求纠正、重入与释放。

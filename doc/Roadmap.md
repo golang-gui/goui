@@ -9,7 +9,7 @@ Demo更新为0.8.1 / build 1，补充必要的修复相关布局入口；双语R
 Go1.24.13独立消费验证已完成，README下载入口同步。既有构建例外与未验收组合见
 [Plan](Plan.md#v081-正式发布2026-11-20)及Release的BUILD-INFO.md，不扩大发布目标。
 
-## 内外滚动条与布局配置（2026-11-21，分组与外部控制完成）
+## 内外滚动条与布局配置（2026-11-22，Target 与外部控制完成）
 
 ScrollView 内置条已逐轴提供 HScrollBarOptions / VScrollBarOptions，区分条厚、
 滑块厚度、额外间距及 Auto/Always/Hidden。默认轨道和滑块都为8 DIP、间距0，延续既有外观；
@@ -17,11 +17,12 @@ ScrollView 内置条已逐轴提供 HScrollBarOptions / VScrollBarOptions，区�
 表头接缝与交汇角，保留手动列宽和基础宽度，不再猜测固定厚度。
 交汇角通过独立corner Part装饰：普通滚动容器默认透明，TableView主题显式保留轨道底色。
 ScrollBarClient／BindScrollBar 支持非 Widget 控制端；PageSize 与轨道长度独立，
-TableView 薄转发绑定。声明式 ScrollGroup 通过 ObjectView 与成员生命周期关联
-ScrollView／TableView 和独立 ScrollBar，覆盖局部替换、嵌套隔离及移交；不引入
-独立滚动模型或窗口隐式组。外部对象不归宿主布局／销毁，不进入表格包络。
+TableView 薄转发绑定。声明式 ScrollBar.Target(id) 使用协调层持久引用，覆盖目标
+缺失／局部替换、Root 隔离及移交；宿主不登记组成员，不引入独立滚动模型。
+外部对象不归宿主布局／销毁，不进入表格包络。TabBar().Target(id) 复用同一机制；
+Group 保留显式声明及成员默认来源，CommandScope 表达默认与局部命令范围。
 完整设计见 [DesignScrollBars](DesignScrollBars.md)，进度与验证范围见
-[Plan](Plan.md#外部滚动控制与声明式-scrollgroup2026-11-21)。
+[Plan](Plan.md#targetgroup-与-scope2026-11-22)。
 
 ## Popover 与 SharedPopover 收敛（2026-11-17）
 
@@ -472,7 +473,7 @@ Linux arm64、原生 Wayland、触摸、系统通知／托盘、子菜单仍按�
 ## 共享操作与菜单快捷键列（2026-11-04）
 
 已实现 GUI Command、Shortcut 对象关联、按平台生成的快捷键文字、菜单双列布局与
-打开期间的实时更新；UI 使用窗口默认 CommandGroup 与可选局部分组按 ID 协调命令、菜单和快捷键，
+打开期间的实时更新；UI 使用窗口默认 CommandScope 与可选局部作用域按 ID 协调命令、菜单和快捷键，
 沿用 ObjectView 及既有更新／移交机制。2026-11-05 调整为 MenuItem／Shortcut 的
 DefineCommand 入口声明，Command 为普通描述值；支持批次发布、BindEnabled 局部
 属性更新及 MenuItem／Shortcut.CommandRef 外部借用；

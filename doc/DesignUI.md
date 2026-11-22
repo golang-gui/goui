@@ -210,7 +210,7 @@ wui.CheckButtonGroup(ui.HBox(
 | 接口类别 | 当前做法与结论 |
 | --- | --- |
 | CheckButton.Group | 默认使用最近的作用域，显式对象覆盖默认值，显式 nil 保持独立。 |
-| TabBar(viewID) | 已用 ID 关联 TabView，在 AfterUpdate 解析，无须预先取得 Widget。 |
+| TabBar().Target(viewID) | 持久关联同一 UI Root 的 TabView；目标局部替换也刷新连接，无须重建 TabBar。 |
 | TextView.Model、ListView／TreeView／TableView.Model、SourceView.Document | 模型可在 Widget 创建前独立存在，具有业务数据与通知生命周期，保留对象。 |
 | MenuItemView、TableColumnView、TabPageView、OverlayItemView、ShortcutView、DragSourceView | 接收的是可在构建期间创建的声明描述，不是尚未创建的运行时 Widget，保留描述对象。 |
 | SourceView.Scheme／CompletionProvider、IconSource | 配色、回调与图像资源可独立于控件创建，保留原有值／对象。 |
@@ -428,3 +428,11 @@ Label 的文本仍是普通 string，文案开头准确匹配 `\{format\}` 才�
 参数需在完整句子的 fmt.Sprintf 前按模板调用 textformat.EscapeArg（gui/textformat 子包）；
 不是 UI 自动插值。
 格式语法、错误降级和本轮未实现的选择能力见 [DesignLabel](DesignLabel.md)。
+
+## Target、Group 与 Scope
+
+通用关系约定见 [DesignUIRelations](DesignUIRelations.md)。BindTarget 在持久节点上
+登记具名 Widget 输出引用，在本批所有树挂载后、普通 AfterUpdate 前提交；局部更新
+不要求引用方同时 Update。仅 Widget 输出 ID 可作目标名，组合节点的协调 ID 不作
+自动命名注册。Group 保留显式组声明及具体成员规则，Scope 定义生效及查找边界。
+CommandScope 保留宿主默认范围；ScrollBar 和 TabBar 使用 Target，不依赖配对组。
