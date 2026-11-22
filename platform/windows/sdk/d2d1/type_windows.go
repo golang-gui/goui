@@ -216,6 +216,13 @@ type BezierSegment struct {
 	Point3 Point2F
 }
 
+type GeometrySimplificationOption uint32
+
+const (
+	D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES GeometrySimplificationOption = 0
+	D2D1_GEOMETRY_SIMPLIFICATION_OPTION_LINES            GeometrySimplificationOption = 1
+)
+
 type ArcSegment struct {
 	Point          Point2F
 	Size           SizeF

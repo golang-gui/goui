@@ -28,8 +28,8 @@ import (
 // 每个相交像素按64x64独立面积预期检查预乘RGBA，不只检查四个轴向位置。
 // 覆盖0/22.5/45/73/135/223/315度，1/1.25/1.5/2x、亮暗轨道、128/255前景alpha。
 // 旋转使用普通Painter变换，保持结构clip；-hold最终保留73度圆弧供桌面检查。
-// 此模式的质量预算已在Linux OpenGL／Software通过；Direct2D的既有差异见
-// doc/PlanFractionalClipping.md，失败仍正常报告，不据此放宽断言。
+// 此模式的质量预算已在Linux OpenGL／Software和Windows Direct2D通过；
+// Direct2D曲线精度契约见doc/DesignGraphicsColor.md，失败正常报告，不放宽断言。
 // arc-motion遍历整周并在44..46、72..74度逐.25度采样，保留原圆面积断言。
 // coverage额外绘制三个半透明凹多边形，要求原始浮点轮廓的矩形像素面积积分，
 // 容差2级；相邻直边样本的差值误差不超过两次量化容差之和4级。

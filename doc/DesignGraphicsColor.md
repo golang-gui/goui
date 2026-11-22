@@ -110,6 +110,36 @@ Switch 据此计算滑块圆心和端点，避免矩形轨道与未取整椭圆�
 窗口验证入口为 [ui/pixel_snap](../tests/window/ui/pixel_snap/main.go)，包含普通/Primary、
 35.25 DIP 高度及真实标题栏符号；Windows 1x 的修复前后对照与其他结果见 Plan。
 
+### Direct2D 曲线精度
+
+Direct2D 的默认曲线绘制不保证指定的轮廓近似误差。Windows 10 / WARP、1x、
+PER_PRIMITIVE 抗锯齿下，半径 8 的圆在旧原生椭圆、圆角矩形和等价路径中均只有
+约 196.19 像素的 alpha 面积，独立圆方程预期约 201.06；不能把这类轮廓损失
+归因于 AA 被关闭、颜色或 Switch 样式，也没有证据表明它是 v0.8.1 后的回退。
+
+后端用 [ID2D1Geometry::Simplify](https://learn.microsoft.com/en-us/windows/win32/api/d2d1/nf-d2d1-id2d1geometry-simplify)
+生成只有直线段的原生轮廓，再交给原有 Direct2D 抗锯齿填充／描边。
+原生椭圆和圆角矩形通过 Factory 的对应 Geometry 保留原始定义；含 ArcTo／BezierTo
+的 Path 在构造完成后细分，直线 Path 不增加此步骤。ClearPath、清晰阴影和软阴影
+的输入轮廓使用相同精度，不改变 SourceOver、擦除、画刷或 clip。
+
+目标容差为 `1 / (256 * DPI倍率 * 当前变换最大伸展)` DIP，平移不改变容差。
+该值约束轮廓近似，不承诺原生栅格化等于逐像素精确积分。1/64 物理像素原型虽改善
+圆面积，仍在旋转收尖与 1.5x 圆环回归失败；1/256 的最终实现通过原断言，
+没有放宽允许误差。参考 [Microsoft 几何概览](https://learn.microsoft.com/en-us/windows/win32/direct2d/direct2d-geometries-overview)
+的几何简化契约；不推断原生内部默认细分值，也不通过额外位图或超采样目标补偿。
+
+每个 Painter 最多缓存 64 个椭圆／圆角矩形的只读轮廓，精确几何参数及容差为键。
+画刷、颜色、clip、位置变换不共享可变状态；缓存项仅在单次原生绘制中借用，
+LRU 淘汰或 Painter.Destroy 时 Release。轮廓属于同一个 Factory，可跨设备资源重建
+保留；软阴影命令列表另将容差纳入既有缓存键。普通 Path 不缓存可变数据。
+
+相同 WARP、RGBA8 256×128 目标、32 个图元及完整创建／绘制／读回，四轮测量的
+中位数：旧／新椭圆约 715／738 µs，圆角矩形 706／752 µs，自由圆路径 762／1092 µs。
+两种缓存图元每轮均 138 次 Go 分配；自由路径为 586／906 次。
+这是离屏场景的开销边界，不能推算桌面 FPS 或硬件 GPU 性能；动态自由曲线增加的
+细分成本是已知代价。原生窗口、独立面积回归及其他后端结果见 [Plan](Plan.md)。
+
 ## 文字颜色
 
 TextFormat.TextColor 和 SetTextColor 使用标准 Go color.Color，而不是 graphics.Color
