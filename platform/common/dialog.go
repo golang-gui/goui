@@ -21,10 +21,26 @@ type FileAccess interface {
 	Close() error
 }
 
-// FileFilter defines a file type filter for dialog boxes.
+// FileFilterFormat describes the native representation accepted by a file dialog.
+// It does not define GUI filtering policy.
+type FileFilterFormat uint8
+
+const (
+	// FileFilterUnknown means no supported filter representation is reported.
+	FileFilterUnknown FileFilterFormat = iota
+	// FileFilterGlob accepts case-sensitive shell globs, including bracket sets.
+	FileFilterGlob
+	// FileFilterWildcard accepts case-insensitive native wildcards.
+	FileFilterWildcard
+	// FileFilterExtension accepts bare extensions; an empty list allows all types.
+	FileFilterExtension
+)
+
+// FileFilter contains values in the dialog's reported native FilterFormat.
+// Native presentation of multiple named filters depends on the backend.
 type FileFilter struct {
-	Name     string   // Display name, e.g. "Images"
-	Patterns []string // e.g. {"*.png", "*.jpg"}
+	Name   string
+	Values []string
 }
 
 // DialogOptions configures a native file dialog.
@@ -39,6 +55,9 @@ type DialogOptions struct {
 // FileDialog is the native file dialog capability. It is thread-affine and
 // must be used on the thread that owns the platform.
 type FileDialog interface {
+	// FilterFormat reports the native filter representation accepted by this
+	// dialog, including its fallback paths. It does not start a picker.
+	FilterFormat() FileFilterFormat
 	// OpenFile opens a native file dialog for selecting one or more files.
 	// owner requests native association; nil leaves the dialog unowned.
 	// Positioning is controlled by the operating system.

@@ -19,7 +19,7 @@ import (
 
 func TestFileDialogParameters(t *testing.T) {
 	opts := common.DialogOptions{AllowMultiple: true, InitialDir: "/tmp/目录", DefaultName: "a.txt",
-		Filters: []common.FileFilter{{Name: "Images", Patterns: []string{"*.png", "*.jpg"}}}}
+		Filters: []common.FileFilter{{Name: "Images", Values: []string{"*.png", "*.jpg"}}}}
 	for _, test := range []struct {
 		action Action
 		parent string
@@ -42,6 +42,12 @@ func TestFileDialogParameters(t *testing.T) {
 		}
 		if test.action != OpenDirectory && args["filters"].Signature().String() != "a(sa(us))" {
 			t.Fatal("过滤器 D-Bus 签名错误")
+		}
+		if test.action != OpenDirectory {
+			want := []filter{{Name: "Images", Conditions: []condition{{Pattern: "*.png"}, {Pattern: "*.jpg"}}}}
+			if !reflect.DeepEqual(args["filters"].Value(), want) {
+				t.Fatalf("Portal 改写了调用方的原生条件：%v", args["filters"].Value())
+			}
 		}
 	}
 	if _, _, err := parameters(OpenFile, "", common.DialogOptions{InitialDir: "bad\x00path"}); err == nil {
@@ -253,7 +259,7 @@ func TestFileDialogProtocol(t *testing.T) {
 			})
 			paths, err := f.Open(context.Background(), action, "x11:abcd", common.DialogOptions{
 				DefaultName: "target.txt", InitialDir: "/tmp", AllowMultiple: true,
-				Filters: []common.FileFilter{{Name: "Text", Patterns: []string{"*.txt", "*.md"}}},
+				Filters: []common.FileFilter{{Name: "Text", Values: []string{"*.txt", "*.md"}}},
 			})
 			if err != nil || !reflect.DeepEqual(paths, []string{"/tmp/a b"}) {
 				t.Fatalf("早到响应丢失或转换错误: %v %v", paths, err)

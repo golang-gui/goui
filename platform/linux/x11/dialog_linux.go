@@ -27,6 +27,8 @@ func newFileDialog() (common.FileDialog, error) {
 	return &fileDialog{helper: helper}, nil
 }
 
+func (*fileDialog) FilterFormat() common.FileFilterFormat { return common.FileFilterGlob }
+
 // dialogHelper represents an available dialog helper command.
 type dialogHelper int
 
@@ -76,7 +78,7 @@ func buildFilterArgs(helper dialogHelper, filters []common.FileFilter) []string 
 
 	var args []string
 	for _, f := range filters {
-		pattern := strings.Join(f.Patterns, " ")
+		pattern := strings.Join(f.Values, " ")
 		switch helper {
 		case dialogZenity, dialogYad:
 			// zenity/yad: --file-filter="Name|*.png *.jpg"
@@ -167,7 +169,7 @@ func (fd *fileDialog) open(owner common.Window, action portal.Action, opts commo
 	}
 	opts.Filters = slices.Clone(opts.Filters)
 	for i := range opts.Filters {
-		opts.Filters[i].Patterns = slices.Clone(opts.Filters[i].Patterns)
+		opts.Filters[i].Values = slices.Clone(opts.Filters[i].Values)
 	}
 	if platform.fileChooser == nil {
 		platform.fileChooser = portal.NewFileChooser()

@@ -346,8 +346,8 @@ func parameters(action Action, parent string, opts common.DialogOptions) (string
 	if len(opts.Filters) > 0 && action != OpenDirectory {
 		filters := make([]filter, 0, len(opts.Filters))
 		for _, item := range opts.Filters {
-			entry := filter{Name: item.Name, Conditions: make([]condition, 0, len(item.Patterns))}
-			for _, pattern := range item.Patterns {
+			entry := filter{Name: item.Name, Conditions: make([]condition, 0, len(item.Values))}
+			for _, pattern := range item.Values {
 				entry.Conditions = append(entry.Conditions, condition{Pattern: pattern})
 			}
 			filters = append(filters, entry)

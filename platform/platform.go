@@ -52,12 +52,18 @@ type (
 	CursorShape        = common.CursorShape
 	EventHandler       = events.EventHandler
 	FileFilter         = common.FileFilter
+	FileFilterFormat   = common.FileFilterFormat
 	DialogOptions      = common.DialogOptions
 	FileDialog         = common.FileDialog
 	FileAccess         = common.FileAccess
 )
 
 const (
+	FileFilterUnknown   = common.FileFilterUnknown
+	FileFilterGlob      = common.FileFilterGlob
+	FileFilterWildcard  = common.FileFilterWildcard
+	FileFilterExtension = common.FileFilterExtension
+
 	WindowChromeUnknown    = common.WindowChromeUnknown
 	WindowChromeNative     = common.WindowChromeNative
 	WindowChromeIntegrated = common.WindowChromeIntegrated

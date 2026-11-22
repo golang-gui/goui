@@ -7,7 +7,7 @@ import (
 	"github.com/golang-gui/goui/gui"
 )
 
-// FileFilter defines a file type filter for dialog boxes.
+// FileFilter uses the GUI's extension-filtering rules for native file dialogs.
 type FileFilter = gui.FileFilter
 
 // DialogOptions configures a native file dialog.

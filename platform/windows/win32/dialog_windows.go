@@ -20,6 +20,8 @@ func newFileDialog() (common.FileDialog, error) {
 	return &fileDialog{p: platform}, nil
 }
 
+func (*fileDialog) FilterFormat() common.FileFilterFormat { return common.FileFilterWildcard }
+
 // OpenFile opens a file selection dialog.
 func (fd *fileDialog) OpenFile(owner common.Window, opts common.DialogOptions, cb func([]common.FileAccess, error)) {
 	dlg, hr := shell.CreateFileOpenDialog()
@@ -289,7 +291,7 @@ func toFilterSpecs(filters []common.FileFilter) ([]shell.COMDLG_FILTERSPEC, func
 	var keepers []*uint16
 	for _, f := range filters {
 		wName, _ := syscall.UTF16PtrFromString(f.Name)
-		pattern := strings.Join(f.Patterns, ";")
+		pattern := strings.Join(f.Values, ";")
 		wSpec, _ := syscall.UTF16PtrFromString(pattern)
 		keepers = append(keepers, wName, wSpec)
 		specs = append(specs, shell.COMDLG_FILTERSPEC{

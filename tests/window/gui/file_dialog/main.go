@@ -134,12 +134,12 @@ func run(path string) error {
 		switch kind {
 		case "file":
 			dialog.OpenFile(owner, gui.DialogOptions{Title: "GOUI choose file", AllowMultiple: true,
-				Filters: []gui.FileFilter{{Name: "Text", Patterns: []string{"*.txt", "*.md"}}, {Name: "All files", Patterns: []string{"*"}}}}, cb)
+				Filters: []gui.FileFilter{{Name: "Text", Extensions: []string{"txt", "md"}}, {Name: "All files"}}}, cb)
 		case "folder":
 			dialog.OpenDirectory(owner, gui.DialogOptions{Title: "GOUI choose folder"}, cb)
 		case "save":
 			dialog.SaveFile(owner, gui.DialogOptions{Title: "GOUI choose destination", DefaultName: "goui-modal.txt",
-				Filters: []gui.FileFilter{{Name: "Text", Patterns: []string{"*.txt", "*.md"}}, {Name: "All files", Patterns: []string{"*"}}}}, cb)
+				Filters: []gui.FileFilter{{Name: "Text", Extensions: []string{"txt", "md"}}, {Name: "All files"}}}, cb)
 		}
 	}
 	rootA := box()
