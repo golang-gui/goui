@@ -24,6 +24,7 @@
 | macOS 普通窗口默认位置与显示保持 | [platform/window_position](platform/window_position/main_darwin.go) | macOS arm64；三种 Chrome，隐藏默认原生居中、显式定位、重复 Hide/Show、Popup 不居中与锚点；`-auto` 原生几何断言，手动检查初始可见位置与闪烁 |
 | 初始 Center 创建选项、显式覆盖与重建/重现保持 | [ui/window_center](ui/window_center/main.go) | 三平台；Native/Integrated/None、1x/2x；`-auto` 核对隐藏创建、实际客户区/工作区中心、显式移动、UI 身份及 Hide/Show；`-override` / `-center=false` / `-skip-taskbar=true`；真实输入与视觉操作见中文入口 |
 | 任务栏跳过偏好与普通辅助窗口输入/定位 | [gui/taskbar](gui/taskbar/main.go) | 三平台；None/Native/Integrated、显示前 SetPosition、任务栏/Alt+Tab/Dock、真实输入/移动/缩放与最小化恢复；`-auto` 仅原生初始化和定位断言 |
+| 普通／不保活窗口与应用退出清理 | [ui/window_lifetime](ui/window_lifetime/main.go) | 三平台；GUI/UI 混合窗口、普通窗口计数、关闭否决、辅助输入与重建、仅辅助窗口模式；`-auto` 按绘制／关闭状态推进并断言全部资源清理 |
 | BorderBox 单子边框与 None root 缩放 | [gui/border_box](gui/border_box/main.go) | 三平台；默认无外观/自定义圆角、8 方向光标、原生缩放、输入/移动、禁用/嵌套/重挂载；`-auto` 仅布局/Snapshot |
 | 完整默认 Basic、Modern 一行应用与恢复兜底 | [ui/themes](ui/themes/main.go) | 三平台；未设置/显式 Basic、系统/深色 Modern；Software/OpenGL（Windows 另有 Direct2D）、1x/2x；联动/禁用/Tab、F6 身份/文本/边界断言，不使用 DevServer |
 | Windows 版本对应边框、客户区尺寸与顶部两角 | [platform/window_chrome](platform/window_chrome/main_windows.go) | Windows 10/11 x64；Native/Integrated/None、隐藏几何 -auto 与实际亮暗/激活/缩放/最大化；Software/OpenGL/Direct2D、渲染 1x/2x 与真实系统 DPI 分别记录 |
