@@ -12,6 +12,19 @@
   设计及参考契约见 [DesignApp](DesignApp.md#35-窗口保活与退出清理2026-11-22)。
 - [x] UI Window.NoKeepRunning(bool) 薄转发创建选项；覆盖默认／显式恢复、同 ID 保留
   与拒绝修改、新 ID 重新创建，并确认 UI 不自行决定退出策略。
+- [x] 新增 [window_lifetime](../tests/window/ui/window_lifetime/main.go) 独立窗口程序，
+  组合声明式与命令式普通／不保活窗口，正常派发按钮输入，按实际绘制和关闭通知推进；
+  验证计数、关闭否决、重建身份、语义快照及 Run 返回后的控件／原生资源清理。
+- [x] Linux amd64，独立 X11／xfwm4（关闭合成）／Software／1×，
+  构建后运行 `window_lifetime -auto` 与 `-auto -only-tools` 两场景通过：
+  普通场景四个窗口、仅不保活场景两个窗口，均一次退出、无剩余宿主。
+  仅不保活场景确认无窗口后 Timer 仍执行，再显式 Quit；不把自动输入等同于原生焦点验收。
+- [x] `go test -json ./... -count=1`：6317 项通过，82 个有测试包通过，156 个无测试包
+  单列，零失败、零条件跳过。既有 X11 测试创建私有窗口与 selection，未改变用户设置。
+- [x] `go test -race ./gui ./ui -count=1`、
+  `go test -json -shuffle=on -count=3 ./gui ./ui`（9687 项）及相关包／窗口程序 `go vet`
+  通过。Windows amd64、macOS arm64 的 GUI／UI 测试目标及窗口程序交叉编译通过。
+  本轮未改平台代码，Windows／macOS 原生运行、其他后端和缩放未执行。
 
 ## GUI 测试按子系统归并（2026-11-22）
 
