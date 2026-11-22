@@ -42,7 +42,7 @@ SourceView 的 `go run ./tests/window/experience` 在 Software 1x/2x、OpenGL 1x
 
 ### 复现与验证
 
-- `gui/menu_input_test.go` 经 `Window.DispatchEvent` 验证 100 次跨 Label 往返、文字/留白
+- `gui/menu_test.go` 经 `Window.DispatchEvent` 验证 100 次跨 Label 往返、文字/留白
   切换、静止指针上的键盘切换及再移动、原生 PointerLeave/PointerEnter、禁用项/分隔线、
   鼠标按住期间的键盘导航、静止指针按下接管与 Enter 激活。独立比较绘制样式和 Selected，
   不只检查 Snapshot。修改前快照中的回归失败明确报告 painted=2、selected=1。

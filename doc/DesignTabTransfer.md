@@ -1791,7 +1791,7 @@ GUI 的 Application 会话，下一次跨窗接管因此报告 unavailable or bu
 GOUI 采用会话持有终态通知、显式解释资源寿命的原则；当前沿用 surface-scoped
 能力，在源服务销毁时结束跟踪，未新增独立 IPC 窗口或标签专属的全局会话。
 
-`gui/drag_dispatch_test.go` 覆盖 Drop 内/返回后源宿主销毁，接受/拒绝结果、终态一次、
+`gui/drag_drop_test.go` 覆盖 Drop 内/返回后源宿主销毁，接受/拒绝结果、终态一次、
 会话数据释放、正常指针输入启动下一会话以及迟到旧终态隔离。
 `tests/window/widgets/tab_detach -expect source-close-repeat` 在真实窗口中覆盖最后一页
 移入主窗口后同步销毁源，再进行两次往返；Verify 断言五次转移、三次空源关闭、

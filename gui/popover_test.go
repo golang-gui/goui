@@ -1,10 +1,13 @@
 package gui
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"image"
 	"image/color"
+	"log"
+	"strings"
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
@@ -932,5 +935,452 @@ func TestPopoverFocusPolicyDoesNotInheritFromAnchor(t *testing.T) {
 	popupRoot.SetCanContainFocus(false)
 	if p.FocusedWidget() != nil || p.SetFocusedWidget(child) || child.Focused() || popupRoot.ContainsFocus() {
 		t.Fatal("Popover自身焦点准入没有生效")
+	}
+}
+
+// --- Popover 锚点切换与资源复用 ---
+
+func ordinaryReuseFixture(t *testing.T) (*popover, *window, *transientTestPlatform, *testWidget, *testWidget) {
+	t.Helper()
+	w, plat, makeClient := transientFixture(t)
+	a, b := newTestWidget(), newTestWidget()
+	tree := newTestWidget()
+	tree.AddChild(a)
+	tree.AddChild(b)
+	w.SetWidget(tree)
+	tree.Arrange(geometry.Rect(0, 0, 400, 300))
+	a.Arrange(geometry.Rect(10, 20, 80, 30))
+	b.Arrange(geometry.Rect(210, 40, 90, 30))
+	p := NewPopover(a, nil).(*popover)
+	p.SetWidget(makeClient(nil).Widget())
+	t.Cleanup(p.Destroy)
+	return p, w, plat, a, b
+}
+
+func TestPopoverSetAnchorReusesNativeWithinSurface(t *testing.T) {
+	p, w, plat, a, b := ordinaryReuseFixture(t)
+	mounts, unmounts, closed := 0, 0, 0
+	content := newTestWidget()
+	content.SetMinSize(geometry.Size{Width: 60, Height: 30})
+	content.ConnectMount(func() { mounts++ })
+	content.ConnectUnmount(func() { unmounts++ })
+	p.SetWidget(content)
+	p.ConnectClosed(func() { closed++ })
+	p.SetPlacement(PopoverPlacementBottom)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	native, painter := p.platformPopup, p.painter
+	if len(w.ownedPopovers) != 1 {
+		t.Fatal("可见实例没有登记资源归属")
+	}
+	p.SetAnchor(a)
+	if !p.Visible() || closed != 0 {
+		t.Fatal("相同锚点改变了显示")
+	}
+	p.SetAnchor(b)
+	if p.Visible() || p.Anchor() != b || closed != 1 || len(plat.natives) != 1 {
+		t.Fatal("SetAnchor 没有只结束旧显示并保留资源")
+	}
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	if p.platformPopup != native || p.painter != painter || content.Root() != p || mounts != 1 || unmounts != 0 {
+		t.Fatal("同 Surface 换锚点重建资源或重复挂载")
+	}
+	if p.requestedPosition != (geometry.Point{X: 210, Y: 70}) {
+		t.Fatal("没有使用新锚点定位", p.requestedPosition)
+	}
+	w.Widget().(*testWidget).RemoveChild(a)
+	if !p.Visible() {
+		t.Fatal("旧锚点卸载关闭了新显示")
+	}
+	p.Hide()
+	if len(w.Popovers()) != 0 || len(w.ownedPopovers) != 1 {
+		t.Fatal("可见枚举与隐藏资源归属混淆")
+	}
+	w.Destroy()
+	if !plat.natives[0].destroyed || p.painter != nil || content.Root() != nil || len(w.ownedPopovers) != 0 {
+		t.Fatal("Surface 未释放隐藏普通 Popover")
+	}
+}
+
+func TestPopoverSetAnchorRebuildsAcrossSurfaces(t *testing.T) {
+	p, old, plat, _, _ := ordinaryReuseFixture(t)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	native, painter := p.platformPopup, p.painter
+	other := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &placementWindow{area: geometry.Rect(0, 0, 1000, 800)}}})
+	t.Cleanup(other.Destroy)
+	anchor := newTestWidget()
+	other.SetWidget(anchor)
+	anchor.Arrange(geometry.Rect(50, 60, 40, 30))
+	p.SetAnchor(anchor)
+	if p.platformPopup != native || len(plat.natives) != 1 {
+		t.Fatal("SetAnchor 提前重建了原生窗口")
+	}
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	if p.platformPopup == native || p.painter == painter || !plat.natives[0].destroyed || len(plat.natives) != 2 || p.Widget().Root() != p {
+		t.Fatal("跨 Surface 未释放重建资源并保留 Go Root")
+	}
+	if len(old.ownedPopovers) != 0 || len(other.ownedPopovers) != 1 {
+		t.Fatal("资源仍登记在旧 Surface")
+	}
+	current := p.platformPopup
+	old.Destroy()
+	if p.platformPopup != current || !p.Visible() || plat.natives[1].destroyed {
+		t.Fatal("旧 Surface 销毁影响了新归属")
+	}
+}
+
+func TestPopoverAnchorUnmountRetainsUntilOwnerEnds(t *testing.T) {
+	p, w, plat, a, _ := ordinaryReuseFixture(t)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	native, painter := p.platformPopup, p.painter
+	tree := w.Widget().(*testWidget)
+	tree.RemoveChild(a)
+	if p.Visible() || p.platformPopup != native || p.painter != painter || plat.natives[0].destroyed {
+		t.Fatal("锚点卸载销毁了仍有效的资源")
+	}
+	tree.AddChild(a)
+	a.Arrange(geometry.Rect(10, 20, 80, 30))
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	if p.platformPopup != native || p.painter != painter {
+		t.Fatal("重新挂载后没有复用")
+	}
+	w.Destroy()
+	other := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &placementWindow{area: geometry.Rect(0, 0, 1000, 800)}}})
+	t.Cleanup(other.Destroy)
+	anchor := newTestWidget()
+	other.SetWidget(anchor)
+	anchor.Arrange(geometry.Rect(10, 10, 50, 30))
+	p.SetAnchor(anchor)
+	if err := p.Show(); err != nil || len(plat.natives) != 2 {
+		t.Fatal("原 Surface 结束后 Popover 对象不能迁移", err)
+	}
+}
+
+func TestPopoverSetAnchorClosedReentryKeepsLaterRequest(t *testing.T) {
+	p, _, _, _, b := ordinaryReuseFixture(t)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	handle := p.ConnectClosed(func() {
+		if p.Anchor() != b {
+			t.Fatal("Closed 看不到新锚点请求")
+		}
+		if err := p.Show(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Cleanup(handle.Disconnect)
+	p.SetAnchor(b)
+	if !p.Visible() || p.Anchor() != b {
+		t.Fatal("SetAnchor 的旧清理覆盖了回调重开")
+	}
+}
+
+func TestPopoverPreparationFailureRetainsValidNative(t *testing.T) {
+	p, w, plat, _, _ := ordinaryReuseFixture(t)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	native, painter := p.platformPopup, p.painter
+	p.Hide()
+	w.platformWindow.(*placementWindow).err = platform.ErrUnavailable
+	if err := p.Show(); !errors.Is(err, platform.ErrUnavailable) || p.Visible() {
+		t.Fatal("查询失败仍显示或错误丢失", err)
+	}
+	if p.platformPopup != native || p.painter != painter || plat.natives[0].destroyed {
+		t.Fatal("普通准备失败销毁了有效资源")
+	}
+}
+
+func TestPopoverContentUnmountCanDestroyOwner(t *testing.T) {
+	p, w, plat, _, _ := ordinaryReuseFixture(t)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	p.Widget().ConnectUnmount(func() {
+		w.Destroy()
+		if p.painter == nil || plat.natives[0].destroyed {
+			t.Fatal("内容卸载回调尚未退出就释放了原生资源")
+		}
+	})
+	p.SetWidget(newTestWidget())
+	if w.platformWindow != nil || !plat.natives[0].destroyed || p.platformPopup != nil {
+		t.Fatal("普通弹层内容卸载后未安全完成资源清理")
+	}
+}
+
+func TestPopoverRejectsAnchorCycle(t *testing.T) {
+	p, _, _, _, _ := ordinaryReuseFixture(t)
+	p.SetAnchor(p.Widget())
+	if err := p.Show(); err == nil {
+		t.Fatal("接受了以自身内容为锚点的循环")
+	}
+}
+
+func TestSharedSetAnchorSelectsExistingDestinationCache(t *testing.T) {
+	w, plat, makeClient := transientFixture(t)
+	a := makeClient(nil)
+	if err := a.Show(); err != nil {
+		t.Fatal(err)
+	}
+	source := w.shared.popup
+	nativeSource := source.platformPopup
+	other := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: &placementWindow{area: geometry.Rect(0, 0, 1000, 800)}}})
+	t.Cleanup(other.Destroy)
+	anchor := newTestWidget()
+	other.SetWidget(anchor)
+	anchor.Arrange(geometry.Rect(10, 10, 50, 30))
+	b := makeClient(anchor)
+	if err := b.Show(); err != nil {
+		t.Fatal(err)
+	}
+	destination := other.shared.popup
+	nativeDestination := destination.platformPopup
+	a.SetAnchor(anchor)
+	if a.Visible() || source.platformPopup != nativeSource || plat.natives[0].destroyed {
+		t.Fatal("共享客户端换锚点销毁或迁移了源缓存")
+	}
+	if err := a.Show(); err != nil {
+		t.Fatal(err)
+	}
+	if b.Visible() || a.Widget().Root() != destination || destination.platformPopup != nativeDestination || len(plat.natives) != 2 {
+		t.Fatal("未选择目标 Surface 已存在的缓存")
+	}
+	c := makeClient(nil)
+	if err := c.Show(); err != nil {
+		t.Fatal(err)
+	}
+	if c.Widget().Root() != source || source.platformPopup != nativeSource || len(plat.natives) != 2 {
+		t.Fatal("源 Surface 不能继续复用缓存")
+	}
+}
+
+// --- Popover 布局、样式与隐藏状态失效 ---
+
+type popoverStyleMeasureWidget struct {
+	WidgetBase
+	measures int
+}
+
+func (w *popoverStyleMeasureWidget) Measure(c layout.Constraint) layout.Measurement {
+	w.measures++
+	size, _ := WidgetStyle(w, "popover-invalidation-content", style.PartDefault).FontSize()
+	return layout.Measured(c.Clamp(geometry.Size{Width: 4 * size, Height: 2 * size}))
+}
+
+func popoverInvalidationSheet(size float32) style.StyleSheet {
+	return style.Sheet(style.Name("popover-invalidation-content").FontSize(size))
+}
+
+func capturePopoverLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	t.Cleanup(func() { log.SetOutput(previous) })
+	return &output
+}
+
+func TestHiddenPopoverDefersStyleLayout(t *testing.T) {
+	for _, state := range []string{
+		"ordinary-retained", "ordinary-detached", "ordinary-no-anchor", "ordinary-other-surface",
+		"shared-retained", "shared-evicted", "shared-detached",
+	} {
+		t.Run(state, func(t *testing.T) {
+			w, plat, makeClient := transientFixture(t)
+			App.SetStyleSheet(popoverInvalidationSheet(10))
+			anchor := w.Widget()
+			anchorRect := anchor.Rect()
+			content := new(popoverStyleMeasureWidget)
+			var client *sharedPopover
+			var p *popover
+			shared := strings.HasPrefix(state, "shared-")
+			if shared {
+				client = makeClient(anchor)
+				client.SetWidget(content)
+				if err := client.Show(); err != nil {
+					t.Fatal(err)
+				}
+				p = w.shared.popup
+			} else {
+				p = NewPopover(anchor, nil).(*popover)
+				t.Cleanup(p.Destroy)
+				p.SetWidget(content)
+				if err := p.Show(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p.Hide()
+			restore := func() {}
+			queries := []*placementWindow{w.platformWindow.(*placementWindow)}
+			migrated := false
+			switch state {
+			case "ordinary-detached", "shared-detached":
+				w.SetWidget(nil)
+				restore = func() { w.SetWidget(anchor); anchor.Arrange(anchorRect) }
+			case "ordinary-no-anchor":
+				p.SetAnchor(nil)
+				restore = func() { p.SetAnchor(anchor) }
+			case "ordinary-other-surface":
+				native := &placementWindow{area: geometry.Rect(0, 0, 1000, 800)}
+				other := testWindowWithSurface(&window{surfaceBase: surfaceBase{platformWindow: native}})
+				t.Cleanup(other.Destroy)
+				otherAnchor := newTestWidget()
+				other.SetWidget(otherAnchor)
+				otherAnchor.Arrange(geometry.Rect(40, 50, 80, 30))
+				p.SetAnchor(otherAnchor)
+				queries = append(queries, native)
+				migrated = true
+			case "shared-evicted":
+				client.Destroy()
+			}
+			native, painter := p.platformPopup, p.painter
+			beforeMeasures := content.measures
+			beforeQueries := 0
+			for _, host := range queries {
+				beforeQueries += len(host.points)
+			}
+			beforeSizes, beforePositions, beforePaints := len(plat.natives[0].sizes), len(plat.natives[0].positions), len(plat.painters[0].calls)
+			output := capturePopoverLog(t)
+			App.SetStyleSheet(popoverInvalidationSheet(20))
+			afterQueries := 0
+			for _, host := range queries {
+				afterQueries += len(host.points)
+			}
+			if output.Len() != 0 || content.measures != beforeMeasures || afterQueries != beforeQueries {
+				t.Fatalf("隐藏样式更新不应定位或测量：queries=%d→%d measures=%d→%d log=%s", beforeQueries, afterQueries, beforeMeasures, content.measures, output)
+			}
+			if p.Visible() || !p.layoutDirty || p.platformPopup != native || p.painter != painter || plat.natives[0].destroyed ||
+				len(plat.natives[0].sizes) != beforeSizes || len(plat.natives[0].positions) != beforePositions || len(plat.painters[0].calls) != beforePaints {
+				t.Fatal("隐藏样式更新操作了原生资源，或未保留待布局状态")
+			}
+			restore()
+			if shared {
+				if client.destroyed {
+					client = makeClient(anchor)
+					client.SetWidget(content)
+				}
+				if err := client.Show(); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := p.Show(); err != nil {
+				t.Fatal(err)
+			}
+			if !p.Visible() || p.requestedSize != (geometry.Size{Width: 80, Height: 40}) || content.Rect().Size != p.bodyRect().Size {
+				t.Fatalf("重开未采用新样式布局：requested=%v content=%v", p.requestedSize, content.Rect())
+			}
+			if migrated {
+				if len(plat.natives) != 2 || !plat.natives[0].destroyed || p.platformPopup == native || p.painter == painter {
+					t.Fatal("跨 Surface 重开未正确迁移资源")
+				}
+			} else if len(plat.natives) != 1 || p.platformPopup != native || p.painter != painter {
+				t.Fatal("同 Surface 重开未复用原生资源")
+			}
+		})
+	}
+}
+
+func TestHiddenPopoverSizeEventDefersPosition(t *testing.T) {
+	p, _, plat, _, _ := ordinaryReuseFixture(t)
+	p.SetPosition(geometry.Point{X: 900, Y: 650})
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	p.Hide()
+	p.SetPosition(geometry.Point{X: 20, Y: 30})
+	native := plat.natives[0]
+	beforePositions, beforePaints := len(native.positions), native.paints
+	native.handler(events.SizeEvent{Width: 200, Height: 100, PixelWidth: 300, PixelHeight: 150})
+	if p.width != 200 || p.height != 100 || p.pixelWidth != 300 || p.pixelHeight != 150 || !p.layoutDirty {
+		t.Fatal("隐藏时没有记录原生尺寸和待布局状态")
+	}
+	if len(native.positions) != beforePositions || native.paints != beforePaints {
+		t.Fatal("隐藏尺寸通知使用旧定位快照移动或绘制了原生窗口")
+	}
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	if p.requestedPosition != (geometry.Point{X: 30, Y: 50}) {
+		t.Fatal("重开未按当前锚点和请求位置定位", p.requestedPosition)
+	}
+}
+
+func TestVisiblePopoverStyleLayoutPreservesQueryErrors(t *testing.T) {
+	p, w, _, _, _ := ordinaryReuseFixture(t)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	query := w.platformWindow.(*placementWindow)
+	query.err = platform.ErrUnavailable
+	before := len(query.points)
+	output := capturePopoverLog(t)
+	App.SetStyleSheet(popoverInvalidationSheet(20))
+	if !p.Visible() || len(query.points) <= before || !strings.Contains(output.String(), "goui: popup layout: popover work area:") {
+		t.Fatalf("可见状态未保留真实工作区查询失败：visible=%t queries=%d→%d log=%s", p.Visible(), before, len(query.points), output)
+	}
+}
+
+func TestHiddenPopoverConfigurationDefersNativeWork(t *testing.T) {
+	p, w, plat, a, _ := ordinaryReuseFixture(t)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	w.Widget().(*testWidget).RemoveChild(a)
+	native, painter := p.platformPopup, p.painter
+	query := w.platformWindow.(*placementWindow)
+	beforeQueries, beforePaints := len(query.points), len(plat.painters[0].calls)
+	beforeSizes, beforePositions := len(plat.natives[0].sizes), len(plat.natives[0].positions)
+	output := capturePopoverLog(t)
+	content := new(popoverStyleMeasureWidget)
+	p.SetWidget(content)
+	p.SetStyleName("updated-popover")
+	p.SetPosition(geometry.Point{X: 50, Y: 60})
+	p.SetPlacement(PopoverPlacementBottom)
+	content.RequestLayout()
+	content.RequestPaint()
+	App.SetStyleSheet(popoverInvalidationSheet(20))
+	if output.Len() != 0 || content.measures != 0 || len(query.points) != beforeQueries || len(plat.painters[0].calls) != beforePaints ||
+		len(plat.natives[0].sizes) != beforeSizes || len(plat.natives[0].positions) != beforePositions {
+		t.Fatal("隐藏配置或内容失效提前执行了原生工作", output)
+	}
+	w.Widget().(*testWidget).AddChild(a)
+	a.Arrange(geometry.Rect(70, 80, 50, 30))
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	if p.platformPopup != native || p.painter != painter || content.Rect().Size != (geometry.Size{Width: 80, Height: 40}) ||
+		p.requestedPosition != (geometry.Point{X: 70, Y: 110}) || p.StyleName() != "updated-popover" {
+		t.Fatal("重新挂载未应用隐藏期间的内容和配置")
+	}
+}
+
+func TestVisiblePopoverStyleUpdateResizesRetainedResources(t *testing.T) {
+	w, plat, makeClient := transientFixture(t)
+	App.SetStyleSheet(popoverInvalidationSheet(10))
+	client := makeClient(nil)
+	content := new(popoverStyleMeasureWidget)
+	client.SetWidget(content)
+	if err := client.Show(); err != nil {
+		t.Fatal(err)
+	}
+	p := w.shared.popup
+	native, painter := p.platformPopup, p.painter
+	output := capturePopoverLog(t)
+	App.SetStyleSheet(popoverInvalidationSheet(20))
+	p.paint()
+	if output.Len() != 0 || !client.Visible() || p.platformPopup != native || p.painter != painter || len(plat.natives) != 1 ||
+		p.requestedSize != (geometry.Size{Width: 80, Height: 40}) || content.Rect().Size != p.bodyRect().Size {
+		t.Fatal("可见样式更新未重新布局，或改变了资源归属", output)
 	}
 }

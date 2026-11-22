@@ -318,8 +318,9 @@ TestNativeCursorThemeLifecycle。它们继续使用原有 DISPLAY 条件和有�
 
 ## 2026-11-22 GUI 测试文件整理
 
-按控件和功能职责归并小型回归，保留有独立职责的测试主题；不以减少文件数量为唯一目标。
-gui 根目录从 75 个测试文件调整为 67 个，归属如下：
+按子系统集中相关回归，保留有独立职责的测试主题。gui 根目录经两轮归并从
+75 个测试文件减为 49 个；首轮从 75 个减为 67 个，本轮再减少 18 个。
+以下迁移表均列出最终归属：
 
 | 原文件或主题 | 当前归属 |
 | --- | --- |
@@ -329,19 +330,35 @@ gui 根目录从 75 个测试文件调整为 67 个，归属如下：
 | list_item_layout_test.go | list_view_test.go，虚拟行分配与自然宽度缓存 |
 | scroll_extent_test.go | scroll_view_test.go，小数滚动范围与末端可达性 |
 | style_opaque_box_test.go | style_effect_test.go，不透明填充、边框与圆角像素 |
-| menu_keyboard_test.go、menu_pointer_test.go | menu_input_test.go，键盘／指针共用选中状态及虚拟行复用 |
-| drag_handoff_test.go、drag_source_lifetime_test.go | drag_source_test.go，手势交接与拖拽源生命周期 |
+| menu_keyboard_test.go、menu_pointer_test.go | menu_test.go，键盘／指针共用选中状态及虚拟行复用 |
+| drag_handoff_test.go、drag_source_lifetime_test.go | drag_drop_test.go，手势交接与拖拽源生命周期 |
 | popover_test.go 中的定位主题、popover_edge_test.go | popover_placement_test.go，锚点、工作区、尺寸限制、退避及阴影边缘 |
-| transient_popup_test.go | shared_popover_lifecycle_test.go，共享资源、抢占与宿主生命周期 |
+| transient_popup_test.go | shared_popover_test.go，共享资源、抢占与宿主生命周期 |
 | transient_presentation_test.go | popover_presentation_test.go，显示准备、尺寸／位置及首帧 |
 
-popover_test.go 保留普通 Popover 的内容、焦点、输入、关闭与销毁；复用和失效测试继续
-独立。scroll_frame_test.go 保留视口与内置条布局、边框及像素主题，不挤入滚动状态测试。
-input_info、IMContext、文本编辑和共享文本 helper 保持现有职责；gui/dev、gui/diagnostics
-及 gui/textformat 不作无关归并。
+进一步按子系统归并的文件如下，源文件的测试和辅助声明整体保留，文件内用中文注释分区：
 
-gui 包的 1716 个声明全部保留，其中 110 个仅迁移文件；声明代码 token 和全部注释
-逐项核对一致。仅整理文件、导入和间隔，不修改测试名称、输入、断言、容差、运行条件、
+| 原文件 | 当前归属 |
+| --- | --- |
+| input_info_test.go、context_menu_test.go、gesture_test.go | input_controller_test.go，输入信息与手势解释 |
+| drag_source_test.go、drag_dispatch_test.go、drag_motion_test.go | drag_drop_test.go，拖放数据、会话、派发与自动滚动 |
+| style_changed_test.go、style_scope_test.go | style_test.go，样式解析、范围与失效 |
+| popover_reuse_test.go、popover_invalidation_test.go | popover_test.go，普通 Popover 生命周期与复用 |
+| shared_popover_lifecycle_test.go | shared_popover_test.go，共享协调与资源生命周期 |
+| window_chrome_layout_test.go | window_chrome_test.go，标题栏几何有效性与输入 |
+| drawable_test.go | painter_test.go，绘制可见性、裁剪与请求 |
+| timer_scheduler_test.go | timer_test.go，计时器、队列与调度 |
+| button_group_test.go | button_test.go，按钮与按钮组 |
+| scroll_frame_test.go | scroll_view_test.go，滚动状态、内置条与视口外框 |
+| key_test.go | shortcut_test.go，按键解析与快捷键 |
+| menu_input_test.go | menu_test.go，菜单模型、布局与输入 |
+
+Popover 定位与首帧呈现、样式像素绘制、各类文本控件及共享文本 helper 继续保留独立主题。
+info_test.go 使用外部测试包，保留语义快照公共 API 的黑盒边界，不并入内部 widget 测试。
+gui/dev、gui/diagnostics 及 gui/textformat 不作无关归并。
+
+gui 根目录的 1716 个声明全部保留，本轮其中 173 个仅迁移文件；声明代码 token 和全部
+原有注释逐项核对一致。仅整理文件、导入及主题分区，不修改测试名称、输入、断言、容差、运行条件、
 事件路径或资源释放顺序，不修改生产代码。保留公共平台值类型与 Software 离屏像素测试，
 不新增具体原生后端、平台后缀、测试框架或生产导出入口。验证结果见 Plan。
 
