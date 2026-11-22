@@ -46,9 +46,18 @@ type WindowOptions struct {
 	// SkipTaskbar requests no separate taskbar entry, independently of Chrome
 	// and positioning. Windows also excludes Alt+Tab; X11 may ignore the hint.
 	// macOS keeps the application Dock icon and native minimization behavior.
-	// The window remains an ordinary, activatable window and counts toward the
-	// application's last-window-closed policy. This is creation-only.
+	// The window remains an ordinary, activatable window. Its participation in
+	// automatic application exit is configured separately by NoKeepRunning.
+	// This is creation-only.
 	SkipTaskbar bool
+	// NoKeepRunning excludes this window from keeping the application running.
+	// With QuitOnLastWindowClosed enabled, destroying the last participating
+	// window requests application exit even if excluded windows remain.
+	// Destroying an excluded window does not request automatic exit. Hidden and
+	// minimized participating windows still keep the application running.
+	// The application still owns and destroys this window during shutdown.
+	// False preserves ordinary window behavior. This is creation-only.
+	NoKeepRunning bool
 }
 
 var defaultWindowOptions = WindowOptions{

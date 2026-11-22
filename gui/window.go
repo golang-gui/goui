@@ -109,17 +109,21 @@ const (
 
 type window struct {
 	surfaceBase
-	title        string
-	closeRequest signal.Signal1[*bool]
-	stateChanged signal.Signal1[WindowState]
-	chrome       *windowChrome
-	controls     *windowControls
-	layingOut    bool
-	clientChrome bool // GUI-drawn Integrated over a factual None alpha surface
+	title         string
+	closeRequest  signal.Signal1[*bool]
+	stateChanged  signal.Signal1[WindowState]
+	chrome        *windowChrome
+	controls      *windowControls
+	layingOut     bool
+	clientChrome  bool // GUI-drawn Integrated over a factual None alpha surface
+	noKeepRunning bool
 }
 
 func newWindow(app *application, options WindowOptions) (*window, error) {
-	win := &window{surfaceBase: surfaceBase{rootBase: rootBase{app: app, layoutDirty: true, paintDirty: true, frameSuspended: true, transparent: options.Transparent}}}
+	win := &window{
+		surfaceBase:   surfaceBase{rootBase: rootBase{app: app, layoutDirty: true, paintDirty: true, frameSuspended: true, transparent: options.Transparent}},
+		noKeepRunning: options.NoKeepRunning,
+	}
 
 	win.host = win
 	win.claimed = true

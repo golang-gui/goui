@@ -9,6 +9,13 @@ Demo更新为0.8.1 / build 1，补充必要的修复相关布局入口；双语R
 Go1.24.13独立消费验证已完成，README下载入口同步。既有构建例外与未验收组合见
 [Plan](Plan.md#v081-正式发布2026-11-20)及Release的BUILD-INFO.md，不扩大发布目标。
 
+## 窗口保活参与（2026-11-22）
+
+WindowOptions.NoKeepRunning 允许窗口不阻止应用自动退出，默认行为不变。
+窗口仍归应用管理，退出时由 GUI 兜底清理。
+设计见 [DesignApp](DesignApp.md#35-窗口保活与退出清理2026-11-22)，
+验证范围见 Plan。
+
 ## 内外滚动条与布局配置（2026-11-22，Target 与外部控制完成）
 
 ScrollView 内置条已逐轴提供 HScrollBarOptions / VScrollBarOptions，区分条厚、
