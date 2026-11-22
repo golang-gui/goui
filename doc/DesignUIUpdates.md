@@ -67,7 +67,7 @@ View 实现者用泛型 BindValue(ctx, property, source, apply) 登记属性；p
 
 ## 节点失效与批次
 
-App.RequestUpdate 保持全应用语义。BuildContext.RequestUpdate 请求所属节点 Build/Update，异步执行，过期无效。不提供 ID 依赖关联。来源回调仅线程安全入队，不读取 Widget 或节点当前 Root；UI 线程执行时读取最新声明/归属。
+App.RequestUpdate 保持全应用语义。BuildContext.RequestUpdate 请求所属节点 Build/Update，异步执行，过期无效。状态调度不以 ID 建立依赖；具名 Widget 关系由 BindTarget 的独立提交维护。来源回调仅线程安全入队，不读取 Widget 或节点当前 Root；UI 线程执行时读取最新声明/归属。
 
 App 共用一个任务队列，区分构建失效和属性失效；同节点合并，祖先优先。只跳过本批实际完成更新的节点：父 Update 可能未访问延迟/虚拟行，不能按祖先关系清空请求。全应用更新后仍处理未访问的局部请求。本批运行中新增的通知留给下一批。
 
@@ -141,3 +141,11 @@ BindText／BindValue，只读快照可用 Peek；不因本轮增加自动缓存�
 2026-10-28 核对官方 API 与所示源码：Flutter [Element.markNeedsBuild](https://api.flutter.dev/flutter/widgets/Element/markNeedsBuild.html) 的节点标脏/去重，[Builder](https://api.flutter.dev/flutter/widgets/Builder-class.html) 与 [ListenableBuilder](https://api.flutter.dev/flutter/widgets/ListenableBuilder-class.html) 的回调构建与显式来源；GObject [bind_property](https://docs.gtk.org/gobject/method.Object.bind_property.html) 的来源/目标和 [unbind](https://docs.gtk.org/gobject/method.Binding.unbind.html) 的连接生命周期。仅借鉴机制，GOUI 保持普通 Go 状态、现有 UI 调度和 GUI setter；不照搬 GObject 属性系统或 Flutter 帧调度。
 
 2026-10-30 增补：Flutter [构建依赖接口](https://api.flutter.dev/flutter/widgets/BuildContext/dependOnInheritedWidgetOfExactType.html) 将依赖关联到挂载构建上下文；Vue [effect.ts](https://github.com/vuejs/core/blob/main/packages/reactivity/src/effect.ts)（当日查阅 main）在运行前切换订阅者，并在 finally 清理依赖、恢复上下文。采用节点归属和同步收集范围，不照搬继承查找、JS 全局执行假设或响应式图；Go 的后台读取通过 OS 线程隔离。
+
+## 持久目标引用
+
+BindTarget(ctx, property, id, apply) 复用节点生命周期与批次完成入口。引用方未参与
+更新时保留登记，引用方更新但未登记时清理。整树／局部输出／延迟构建／显式移交
+完成挂载后提交 Target，再运行普通 AfterUpdate；没有普通回调也须安排延迟提交。
+每个 Root 先验证本批最终名称与类型，再应用新连接；回调期间防止嵌套协调，并复核释放与版本。
+Root 只处理通用引用，不识别具体控件；实现与边界见 [UI 关系](DesignUIRelations.md)。

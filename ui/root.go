@@ -25,6 +25,10 @@ type root struct {
 	transferAfter []afterUpdateCall
 	afterPending  bool
 	epoch         uint64
+
+	targets           []*targetBinding
+	targetsDirty      bool
+	committingTargets bool
 }
 
 type afterUpdateCall struct {
@@ -59,6 +63,9 @@ type node struct {
 	released      bool
 	version       uint64
 	baseCtx       *viewBaseContext // persistent cross-cutting signal context, reused across rebuilds
+
+	targetBindings map[string]*targetBinding
+	targetOrder    []string
 }
 
 type buildContext struct {
@@ -97,6 +104,7 @@ func (r *root) flushAfterUpdate() {
 	if r.runtime != nil && r.runtime.reconcilingHosts {
 		return
 	}
+	r.flushTargets()
 	calls := r.afterUpdate
 	r.afterUpdate = nil
 	for _, call := range calls {
@@ -282,6 +290,7 @@ func (r *root) updateDeclaration(old *node, view View, parent *node, depth int, 
 	}
 	current.alive.Store(true)
 	current.bodyChild = bodyChild
+	defer current.finishTargets()
 	defer current.finishBindings()
 	current.beginBindings()
 	ctx := &buildContext{node: current}
@@ -396,6 +405,8 @@ func (r *root) release(n *node, detachWidgets bool) {
 	}
 	n.released = true
 	n.alive.Store(false)
+	n.releaseTargets()
+	r.invalidateTarget(n)
 	n.releaseBindings()
 	n.root = nil
 
@@ -435,9 +446,10 @@ func (ctx *buildContext) beginBuild() (*root, func()) {
 	if ctx.node.released || r == nil {
 		return nil, func() {}
 	}
-	if r.transferring {
-		panic("ui: cannot build children during transfer")
+	if r.transferring || r.committingTargets {
+		panic("ui: cannot build children during transfer or target commit")
 	}
+	r.targetsDirty = true
 	if r.reconciling {
 		return r, func() {}
 	}
@@ -456,13 +468,13 @@ func (ctx *buildContext) beginBuild() (*root, func()) {
 }
 
 func (r *root) scheduleAfterUpdate() {
-	if r.afterPending || len(r.afterUpdate) == 0 || gui.App == nil {
+	if r.afterPending || len(r.afterUpdate) == 0 && (!r.targetsDirty || len(r.targets) == 0) || gui.App == nil {
 		return
 	}
 	r.afterPending = true
 	gui.App.Post(func() {
 		r.afterPending = false
-		if r.reconciling || r.transferring {
+		if r.reconciling || r.transferring || r.committingTargets {
 			r.scheduleAfterUpdate()
 			return
 		}
@@ -475,10 +487,11 @@ func (ctx *buildContext) Coordinator() *Coordinator {
 }
 
 func (r *root) reconcile(view View) {
-	if r.transferring || r.reconciling {
+	if r.transferring || r.reconciling || r.committingTargets {
 		panic("ui: cannot nest reconciliation or reconcile during child transfer; request a later update")
 	}
 	r.reconciling = true
+	r.targetsDirty = true
 	if r.runtime != nil {
 		defer r.runtime.holdUpdates()()
 	}
@@ -921,10 +934,11 @@ type updateLife struct {
 }
 
 func (r *root) updateLocal(n *node) {
-	if r.reconciling || r.transferring || n.released {
+	if r.reconciling || r.transferring || r.committingTargets || n.released {
 		return
 	}
 	r.reconciling = true
+	r.targetsDirty = true
 	defer func() { r.reconciling = false }()
 	epoch := r.epoch
 	old := n.widget

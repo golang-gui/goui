@@ -560,6 +560,17 @@ func (a *app) reconcileBatch(declaration rootDeclaration, jobs []nodeUpdate, ful
 	// tree may still consume this rebuild's old declarations after that point.
 	a.reconcilingHosts = false
 	if system != nil && !system.destroying {
+		system.root.flushTargets()
+	}
+	for _, mount := range mounted {
+		if !mount.destroying {
+			mount.root.flushTargets()
+		}
+	}
+	for _, r := range localRoots {
+		r.flushTargets()
+	}
+	if system != nil && !system.destroying {
 		system.root.flushAfterUpdate()
 	}
 	for _, mount := range mounted {

@@ -204,6 +204,9 @@ func (n *node) releaseBindings() {
 func (n *node) applyBindings() {
 	defer pauseReadTracking()()
 	r := n.root
+	if r != nil {
+		r.targetsDirty = true
+	}
 	for _, key := range n.bindingOrder {
 		if n.released || n.root != r {
 			return
