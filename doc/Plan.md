@@ -7,12 +7,17 @@
   归属表见 [Testing](Testing.md#2026-11-22-gui-测试文件整理)。
 - [x] 1716 个 GUI 声明全部保留，其中 110 个仅迁移文件；代码 token 与全部注释一致。
   不修改生产代码、测试名称、输入、断言、容差、运行条件或资源释放顺序。
+- [x] gui/textedit 的 16 个测试文件归并为 11 个，几何索引与精度回归集中，
+  三个小型 benchmark 文件归回对应主题。106 个声明全部保留，其中 12 个仅迁移文件，
+  代码 token 和注释一致；基准名称、计时范围及可选语料条件不变。
 - [x] Linux amd64，无 DISPLAY／WAYLAND_DISPLAY 的整理前后
   `go test -json ./gui/... -count=1` 均为 2979 项通过，测试／子测试名称及结果集合一致；
   `go test -json -shuffle=on -count=3 ./gui/...` 的 8937 项全部通过，无条件跳过。
 - [x] `go test -race ./gui/... -count=1`、`go vet ./gui/...` 通过；
   Windows amd64、macOS arm64 的
   `CGO_ENABLED=0 go test -c -o <仓库外目录>/ ./gui/...` 目标编译通过。
+- [x] `go test ./gui/textedit -run '^$' -bench '^Benchmark(GeometryWrappedQueries|FragmentFirstScreen|ModelLineQueries)$' -benchtime=1x -count=1`
+  通过，仅作为搬迁后基准入口与断言的运行检查，不作性能结论。外部语料基准未执行。
 - [x] Linux amd64／独立 X11／xfwm4（关闭合成），
   `go test -json ./... -count=1`：6303 项通过，82 个有测试包通过，155 个无测试包单列，
   零失败、零条件跳过。既有 X11 测试创建私有窗口与 selection，未改变用户设置。
