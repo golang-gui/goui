@@ -58,7 +58,7 @@ func (d *tabsDemo) tabContents(w *tabWindow) ui.View {
 	for _, id := range w.pages {
 		pages = append(pages, wui.TabPage(id, ui.ScrollView(ui.TextView().ID("editor-"+id).Model(d.documents[id]).WrapMode(ui.WrapWordChar).Padding(16)).Style("text-view")).Title(fmt.Sprintf(resource.DocumentTitle(), strings.TrimPrefix(id, "document-"))).Icon(d.host.logo).Closable(true))
 	}
-	bar := wui.TabBar("documents").ID("tab-bar").Reorderable(true).Transferable(true).TabWidthRange(105, 200).
+	bar := wui.TabBar().Target("documents").ID("tab-bar").Reorderable(true).Transferable(true).TabWidthRange(105, 200).
 		ContextMenu(func(id string) []*ui.MenuItemView {
 			return []*ui.MenuItemView{ui.MenuItem(resource.CloseTab(), func() { d.requestTabClose(w, id) }), ui.MenuItem(resource.NewTab(), func() { d.addTab(w) })}
 		}).

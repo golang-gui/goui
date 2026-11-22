@@ -145,7 +145,7 @@ func main() {
 		return ui.Root().StyleSheet(sheet).Windows(
 			ui.Window("tabs").Title("GOUI tabs acceptance").Chrome(ui.WindowChromeIntegrated).Size(800, 480).MinSize(400, 320).Content(
 				ui.VBox(
-					ui.HeaderBar(wui.TabBar("documents").TabWidthRange(minWidth, 240).Reorderable(true).
+					ui.HeaderBar(wui.TabBar().Target("documents").TabWidthRange(minWidth, 240).Reorderable(true).
 						ContextMenu(func(key string) []*ui.MenuItemView {
 							fmt.Printf("menu=%s current=%s\n", key, current)
 							return []*ui.MenuItemView{

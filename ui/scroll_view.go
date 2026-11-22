@@ -30,11 +30,6 @@ type ScrollViewView struct {
 	vScrollBar     ScrollBarOptions
 }
 
-type scrollViewState struct {
-	view  *gui.ScrollView
-	group ScrollGroupBinding
-}
-
 // ScrollView wraps content in a viewport. Its default MainWeight is 1;
 // MainWeight(0) opts out of sharing a linear parent's remaining space.
 // ScrollView(TextView()).Style("text-view") includes both scrollbars inside
@@ -79,29 +74,16 @@ func (v *ScrollViewView) Child(child View) *ScrollViewView {
 	return v
 }
 
-func (v *ScrollViewView) Mount(ctx BuildContext) gui.Widget {
-	view := gui.NewScrollView()
-	ctx.SetState(&scrollViewState{view: view})
-	return view
+func (v *ScrollViewView) Mount(BuildContext) gui.Widget {
+	return gui.NewScrollView()
 }
 
 func (v *ScrollViewView) Update(ctx BuildContext, widget gui.Widget) {
-	s := ctx.State().(*scrollViewState)
 	widget.(*gui.ScrollView).SetDirection(v.direction)
 	widget.(*gui.ScrollView).SetDragAutoScroll(v.dragAutoScroll)
 	widget.(*gui.ScrollView).SetHScrollBarOptions(v.hScrollBar)
 	widget.(*gui.ScrollView).SetVScrollBarOptions(v.vScrollBar)
 	ctx.UpdateChild(widget.(*gui.ScrollView), v.child)
-	if ctx.State() == s && !widget.(*gui.ScrollView).Destroyed() {
-		s.group.Update(ctx, s.view)
-	}
 }
 
-func (v *ScrollViewView) Unmount(ctx BuildContext, _ gui.Widget) {
-	ctx.State().(*scrollViewState).group.Disconnect()
-}
-
-func (v *ScrollViewView) Reparented(ctx BuildContext) {
-	s := ctx.State().(*scrollViewState)
-	s.group.Update(ctx, s.view)
-}
+func (v *ScrollViewView) Unmount(BuildContext, gui.Widget) {}

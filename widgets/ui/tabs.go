@@ -193,7 +193,7 @@ func (v *TabViewView) Unmount(ctx baseui.BuildContext, _ gui.Widget) {
 
 type TabBarView struct {
 	baseui.ViewBase[TabBarView]
-	viewID                   string
+	target                   string
 	reorderable              bool
 	minTabWidth, maxTabWidth float32
 	transferable             bool
@@ -203,11 +203,16 @@ type TabBarView struct {
 	contextMenu              func(string) []*baseui.MenuItemView
 }
 
-func TabBar(viewID string) *TabBarView {
-	v := &TabBarView{viewID: viewID}
+// TabBar declares a tab strip. Target associates it with a managed TabView.
+func TabBar() *TabBarView {
+	v := &TabBarView{}
 	v.Self = v
 	return v
 }
+
+// Target follows a TabView's Widget ID in this UI Root, including local output
+// replacement when the bar itself is not updated. Empty clears the association.
+func (v *TabBarView) Target(id string) *TabBarView               { v.target = id; return v }
 func (v *TabBarView) Reorderable(value bool) *TabBarView         { v.reorderable = value; return v }
 func (v *TabBarView) Transferable(value bool) *TabBarView        { v.transferable = value; return v }
 func (v *TabBarView) OnTransferError(fn func(error)) *TabBarView { v.onTransferError = fn; return v }
@@ -276,13 +281,10 @@ func (v *TabBarView) Update(ctx baseui.BuildContext, widget gui.Widget) {
 	bar.SetTransferable(v.transferable)
 	bar.SetReorderable(v.reorderable)
 	bar.SetTabWidthRange(v.minTabWidth, v.maxTabWidth)
-	viewID := v.viewID
-	ctx.AfterUpdate(func() {
-		var view *widgets.TabView
-		if root := bar.Root(); root != nil {
-			view, _ = gui.FindWidget(root, viewID).(*widgets.TabView)
+	baseui.BindTarget(ctx, "tab-view", v.target, func(view *widgets.TabView) {
+		if !bar.Destroyed() {
+			bar.SetView(view)
 		}
-		bar.SetView(view)
 	})
 }
 func (v *TabBarView) Unmount(ctx baseui.BuildContext, widget gui.Widget) {

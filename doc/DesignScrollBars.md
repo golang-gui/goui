@@ -1,8 +1,8 @@
 # ScrollView 内外滚动条与布局配置
 
 > 状态：2026-11-19 首批 A 已交付 ScrollBarOptions、TableView 转发和边框适配。
-> 2026-11-21 补充外部 GUI 绑定、PageSize、TableView 与声明式 ScrollGroup／ScrollBar
-> 的完整契约及分批实施；实际交付进度与验证范围见 Plan。
+> 2026-11-21 补充外部 GUI 绑定、PageSize 与 TableView；2026-11-22 声明式入口
+> 收敛为 Target／ScrollBar。完整契约、实施进度与验证范围见 Plan。
 
 ## 1. 目标与边界
 
@@ -268,45 +268,36 @@ ConnectChange 表达用户位置请求，统一进入 ScrollView 的有限值检
 代替生命周期保护。标准 Widget 客户端卸载时的连接释放由其关联适配器负责。失去滚动范围会通过
 ScrollBar 自身的手势取消路径结束旧拖动，不临时改写 Visible 或触发隐藏／显示。
 
-## 7. 声明式 ScrollGroup 与外部滚动条
+## 7. 声明式 Target 与外部滚动条
 
-ScrollGroup 是 ObjectView 作用域，不生成布局 Widget。最近显式组就是成员的
-默认组；没有窗口隐式组。其子树使用任意普通布局，外部条不需要 Target ID。
-GUI 保留 BindScrollBar 直接关联入口；组只管理连接，不保存第二份滚动状态。
+ScrollBar 通过 Target(id) 关联同一 UI Root 的有效 Widget 输出；不需要 ScrollGroup，
+ScrollView、TableView 和第三方宿主也不登记组成员。通用协调契约见
+[Target、Group 与 Scope](DesignUIRelations.md)。GUI 保留 BindScrollBar 直接对象入口。
 
 ```go
-ui.ScrollGroup(
-    ui.HBox(
-        ui.ScrollView(content).
-            VScrollBarOptions(ui.ScrollBarOptions{Policy: ui.ScrollBarHidden}),
-        ui.ScrollBar(layout.DirectionVertical).Thickness(14).ThumbThickness(8),
-    ).Spacing(6),
-)
+ui.HBox(
+    ui.ScrollView(content).ID("content").
+        VScrollBarOptions(ui.ScrollBarOptions{Policy: ui.ScrollBarHidden}),
+    ui.ScrollBar(layout.DirectionVertical).Target("content").Thickness(14).ThumbThickness(8),
+).Spacing(6)
 ```
 
-同组允许一个 ScrollView 或 TableView 宿主，及任意数量、任意方向的外部条。
-宿主在其声明节点挂载／更新时登记，卸载时退出；内部未声明的 ScrollView 不
-重复登记。最近组形成隔离边界，嵌套滚动区域应分别分组。组暂时无宿主时，条
-接收零范围／页面／偏移；最终同时存在多个宿主是 API 误用，在协调提交时报错，
-不能猜测首个目标。隐藏宿主不解除成员关系，显隐不是对象生命周期。
+一个宿主允许多个方向和多个外部条，同一 Root 内多个具名宿主独立关联。
+目标暂时不存在时清除范围、页面和偏移；被引用 ID 重复或不满足 ScrollHost 时报告
+声明配置错误。隐藏宿主仍是存活目标，显隐不是卸载。
 
-成员变化主动向组登记 AfterUpdate；回调归属于组的声明节点。整树／局部更新、
-目标晚出现、条件删除／重建均能重新配对，不要求外部条参与重建。同轮替换只
-处理最终成员集合。相同宿主与轴保持既有连接；切换宿主先解除旧绑定，清除旧
-拖动，再建立新绑定。条方向改变也结束旧手势并重新绑定。卸载／显式移交时
-成员退出旧组，按最新声明祖先加入新组；组释放在成员释放之后兜底断开连接。
-AfterUpdate 保持一次性语义，不引入持续 ID 观察或额外协调器。
+BindTarget 在整树、局部输出替换和延迟构建完成后提交；即使外部条没有 Update，
+目标的删除、恢复或替换也会刷新连接。普通 AfterUpdate 运行时关联已完成。
+相同宿主和轴保留连接；目标或轴改变先断开旧连接、取消旧手势，再连接新目标。
+引用随显式移交进入新 Root；目标和条一起迁移且连接身份不变时不重连。
 
-ui.ScrollBar 暴露 Orientation、Thickness、ThumbThickness 和普通样式／尺寸修饰器，
-方向对应目标轴。未分组时无关联，普通条不复制 Value／Max 的声明式状态；独立
-数值控制仍可用 GUI ScrollBar。目标条的颜色、大小和可见性归应用声明管理，
-绑定不自动修改宿主的 Options。外部条按自己的树位置出现在 Snapshot 中，报告
-Range 数值和方向；组本身不产生语义节点或动作。输入继续正常派发。
+ui.ScrollBar 暴露 Target、Orientation、Thickness、ThumbThickness 及普通布局、样式
+修饰器。空 Target 不关联，独立数值条仍使用 GUI ScrollBar。绑定不修改宿主内置
+Options，不改变布局、颜色、可见性和 Widget 所有权。外部条在自身语义位置报告
+Range 与方向，不进入 TableView 的内容包络，输入继续正常派发。
 
-TableView 与第三方宿主通过 ui.ScrollHost 小接口及 ui.ScrollGroupBinding helper
-加入最近组；helper 的 Update 在普通协调及 Reparented 中调用，Disconnect 在
-Unmount 中调用。标准 ScrollView 也使用相同 helper。不向 Root／BuildContext
-增加具体控件特例；ScrollGroupBinding 只保留成员身份，不取得 Widget 所有权。
+ScrollHost 是 BindScrollBar 能力接口；Target 支持按接口解析，第三方控件无需
+向 Root 或 BuildContext 增加类型特例。不再暴露 ScrollGroupBinding。
 
 ## 8. 分阶段实施与验收
 
@@ -332,8 +323,9 @@ Auto/Always/Hidden、允许轴变化、双条相互占位、极小分配、末�
 
 ### C. 外部标准条的声明式入口
 
-增加 ui.ScrollGroup 与 ui.ScrollBar，复用 ObjectView、成员生命周期和 AfterUpdate。
-验证局部目标切换／缺失／替换、嵌套隔离、同轴多条、歧义、移交与释放，补充操作示例。
+ui.ScrollBar.Target 使用通用 BindTarget；宿主无需登记成员。
+验证目标切换／缺失／局部替换、Root 隔离、同轴多条、重名、移交与释放。
+窗口入口 tests/window/ui/scroll_target 同时覆盖 TableView、ScrollView 与 TabBar。
 
 ### 8.1 测试组织与交付
 
