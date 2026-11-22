@@ -121,7 +121,7 @@ func (c *Coordinator) TransferChild(child, to gui.Widget, move func() error, com
 	}
 	source := c.owner
 	fromRoot, toRoot := source.root, destination.root
-	if source == destination || fromRoot.transferring || toRoot.transferring || fromRoot.reconciling || toRoot.reconciling {
+	if source == destination || fromRoot.transferring || toRoot.transferring || fromRoot.reconciling || toRoot.reconciling || fromRoot.committingTargets || toRoot.committingTargets {
 		return fmt.Errorf("ui: child transfer is unavailable")
 	}
 	from, target := transferTarget(source), transferTarget(destination)
@@ -193,6 +193,10 @@ func (c *Coordinator) TransferChild(child, to gui.Widget, move func() error, com
 		if failure != nil {
 			panic(failure)
 		}
+		fromRoot.flushTargets()
+		if fromRoot != toRoot {
+			toRoot.flushTargets()
+		}
 		if settled {
 			for _, call := range calls {
 				if !call.owner.released && call.owner.root != nil && call.owner.version == call.version {
@@ -224,6 +228,15 @@ func (c *Coordinator) TransferChild(child, to gui.Widget, move func() error, com
 }
 
 func rehomeNode(n *node, owner *root) {
+	if n.root != nil {
+		n.root.targetsDirty = true
+	}
+	if owner != nil {
+		owner.targetsDirty = true
+	}
+	for _, b := range n.targetBindings {
+		b.rehome(owner)
+	}
 	n.root = owner
 	n.version++
 	if n.body != nil {
