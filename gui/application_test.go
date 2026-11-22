@@ -8,8 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform"
+	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/xuges/gothread"
 )
@@ -50,6 +52,188 @@ func TestApplicationDoesNotQuitWhenDisabled(t *testing.T) {
 	a.removeWindow(w)
 	if loop.quits != 0 {
 		t.Fatalf("must not quit when QuitOnLastWindowClosed is off, quits=%d", loop.quits)
+	}
+}
+
+// 使用现有后端逐次提供独立窗口替身；退出仍走 GUI 生命周期，不创建原生窗口。
+func applicationWindowsFixture(t *testing.T, autoQuit bool) (*application, *quitCountLoop, func(bool) *window) {
+	t.Helper()
+	loop := new(quitCountLoop)
+	backend := &chromeTestPlatform{creationNotifications: true}
+	app := &application{platform: backend, loop: loop, servicesReady: true, quitOnLastWindowClosed: autoQuit}
+	t.Cleanup(app.shutdown)
+	return app, loop, func(noKeepRunning bool) *window {
+		t.Helper()
+		backend.native = &desktopTestWindow{state: WindowStateHidden}
+		public, err := app.NewWindow(&WindowOptions{NoKeepRunning: noKeepRunning})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := public.(*window)
+		w.SetWidget(newTestWidget())
+		return w
+	}
+}
+
+func TestApplicationNoKeepRunningWindows(t *testing.T) {
+	app, loop, makeWindow := applicationWindowsFixture(t, true)
+	first, last, tool := makeWindow(false), makeWindow(false), makeWindow(true)
+	if len(app.Windows()) != 3 || len(app.Surfaces()) != 3 || len(app.Snapshot().Surfaces) != 3 {
+		t.Fatal("不保活窗口丢失应用归属或语义快照")
+	}
+	toolRoot, nativeTool := tool.Widget().(*testWidget), tool.platformWindow.(*desktopTestWindow)
+	closed := 0
+	tool.ConnectDestroy(func() { closed++ })
+	// 隐藏和最小化只影响呈现，普通窗口仍保活。
+	for _, state := range []WindowState{WindowStateHidden, WindowStateMinimized} {
+		last.platformWindow.(*desktopTestWindow).state = state
+		if err := last.DispatchEvent(events.StateEvent{State: state}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := first.RequestClose(); err != nil || loop.quits != 0 || first.PlatformWindow() != nil {
+		t.Fatal("其他普通窗口仍存活时退出，或关闭未完成", err, loop.quits)
+	}
+	prevent := true
+	last.ConnectCloseRequest(func(allow *bool) { *allow = !prevent })
+	if err := last.RequestClose(); err != nil || last.destroyed || loop.quits != 0 {
+		t.Fatal("关闭否决未保留最后一个普通窗口", err)
+	}
+	prevent = false
+	if err := last.RequestClose(); err != nil {
+		t.Fatal(err)
+	}
+	if loop.quits != 1 || !toolRoot.Destroyed() || !nativeTool.destroyed || closed != 1 || len(app.Windows()) != 0 || len(app.Surfaces()) != 0 {
+		t.Fatalf("不保活窗口阻止退出或未清理：quit=%d destroy=%d windows=%d", loop.quits, closed, len(app.Windows()))
+	}
+	tool.Destroy()
+	app.Quit()
+	if closed != 1 || loop.quits != 1 {
+		t.Fatal("重复销毁或退出产生了重复通知")
+	}
+}
+
+func TestApplicationNoKeepRunningDoesNotRequestExit(t *testing.T) {
+	for _, mode := range []string{"仅不保活窗口", "仍有普通窗口", "关闭自动退出", "系统Surface保活"} {
+		t.Run(mode, func(t *testing.T) {
+			app, loop, makeWindow := applicationWindowsFixture(t, mode != "关闭自动退出")
+			tool := makeWindow(true)
+			if mode == "仍有普通窗口" || mode == "关闭自动退出" || mode == "系统Surface保活" {
+				ordinary := makeWindow(false)
+				if mode == "系统Surface保活" {
+					app.systemSurface = newSystemSurface(app)
+					app.systemSurface.claimed = true
+				}
+				if mode != "仍有普通窗口" {
+					ordinary.Destroy()
+				}
+			}
+			if err := tool.RequestClose(); err != nil || loop.quits != 0 || app.quitting.Load() {
+				t.Fatal("不保活窗口关闭触发了自动退出", err, loop.quits)
+			}
+			app.Quit()
+			if loop.quits != 1 || len(app.Windows()) != 0 || len(app.Surfaces()) != 0 {
+				t.Fatal("显式退出没有清理全部宿主")
+			}
+		})
+	}
+}
+
+func TestApplicationLastWindowDestroyCanCreateReplacement(t *testing.T) {
+	for _, excluded := range []bool{false, true} {
+		t.Run(fmt.Sprint("replacementNoKeepRunning=", excluded), func(t *testing.T) {
+			_, loop, makeWindow := applicationWindowsFixture(t, true)
+			old := makeWindow(false)
+			var replacement *window
+			old.ConnectDestroy(func() { replacement = makeWindow(excluded) })
+			old.Destroy()
+			if excluded {
+				if loop.quits != 1 || !replacement.destroyed {
+					t.Fatal("回调中新建不保活窗口延长了应用运行")
+				}
+			} else {
+				if loop.quits != 0 || replacement.destroyed {
+					t.Fatal("未考虑销毁回调中新建的普通窗口")
+				}
+				replacement.Destroy()
+				if loop.quits != 1 {
+					t.Fatal("替代普通窗口关闭后未退出")
+				}
+			}
+		})
+	}
+}
+
+func TestApplicationShutdownDestroysRemainingWindows(t *testing.T) {
+	app, loop, makeWindow := applicationWindowsFixture(t, false)
+	first, other, tool := makeWindow(false), makeWindow(false), makeWindow(true)
+	windows := []*window{first, other, tool}
+	roots := []*testWidget{first.Widget().(*testWidget), other.Widget().(*testWidget), tool.Widget().(*testWidget)}
+	natives := []*desktopTestWindow{first.platformWindow.(*desktopTestWindow), other.platformWindow.(*desktopTestWindow), tool.platformWindow.(*desktopTestWindow)}
+	destroys, shutdowns := 0, 0
+	for _, w := range windows {
+		w.ConnectCloseRequest(func(allow *bool) { *allow = false })
+		w.ConnectDestroy(func() {
+			destroys++
+			if shutdowns != 1 {
+				t.Fatal("窗口兜底清理早于退出通知")
+			}
+			if _, err := app.NewWindow(nil); !errors.Is(err, platform.ErrUnavailable) {
+				t.Fatal("退出期间仍可创建窗口", err)
+			}
+			app.Quit()
+		})
+	}
+	// 模拟 UI 释放部分宿主，以及窗口销毁回调重入销毁另一个宿主。
+	app.ConnectShutdown(func() { shutdowns++; first.Destroy() })
+	other.ConnectDestroy(tool.Destroy)
+	app.Quit()
+	app.shutdown()
+	if loop.quits != 1 || shutdowns != 1 || destroys != 3 || len(app.Windows()) != 0 {
+		t.Fatalf("退出重入或列表修改导致漏清理：quit=%d shutdown=%d destroy=%d", loop.quits, shutdowns, destroys)
+	}
+	for i, w := range windows {
+		if !roots[i].Destroyed() || !natives[i].destroyed || w.PlatformWindow() != nil {
+			t.Fatalf("窗口%d仍保留控件或原生资源", i)
+		}
+	}
+}
+
+func TestApplicationFailedWindowCreationDoesNotRequestExit(t *testing.T) {
+	app, loop, _ := applicationWindowsFixture(t, true)
+	backend := app.platform.(*chromeTestPlatform)
+	backend.native = new(desktopTestWindow)
+	backend.painterError = errors.New("绘制器创建失败")
+	if _, err := app.NewWindow(nil); !errors.Is(err, backend.painterError) || loop.quits != 0 || app.quitting.Load() || len(app.Windows()) != 0 {
+		t.Fatal("未注册窗口的失败清理触发了自动退出", err, loop.quits)
+	}
+}
+
+func TestApplicationQuitDuringWindowCreation(t *testing.T) {
+	app, loop, _ := applicationWindowsFixture(t, true)
+	backend := app.platform.(*chromeTestPlatform)
+	native := new(desktopTestWindow)
+	backend.native, backend.onPainter = native, app.Quit
+	if _, err := app.NewWindow(&WindowOptions{NoKeepRunning: true}); !errors.Is(err, platform.ErrUnavailable) || loop.quits != 1 || !native.destroyed || len(app.Windows()) != 0 {
+		t.Fatal("创建回调中退出后仍登记窗口或泄漏原生资源", err, loop.quits)
+	}
+}
+
+func TestApplicationShutdownDuringWindowFrame(t *testing.T) {
+	app, loop, makeWindow := applicationWindowsFixture(t, true)
+	w := makeWindow(true)
+	root := w.Widget().(*testWidget)
+	native := w.platformWindow.(*desktopTestWindow)
+	backend := new(lifecyclePainter)
+	w.painter = backend
+	native.state = WindowStateNormal
+	if err := w.DispatchEvent(events.StateEvent{State: WindowStateNormal}); err != nil {
+		t.Fatal(err)
+	}
+	w.ConnectAfterPaint(func(Painter, geometry.Rectangle) { app.Quit() })
+	w.paint()
+	if loop.quits != 1 || !native.destroyed || !root.Destroyed() || len(app.Windows()) != 0 || !reflect.DeepEqual(backend.calls, []string{"begin", "end", "destroy"}) {
+		t.Fatal("帧内退出未推迟资源销毁，或退出后仍有资源", loop.quits, backend.calls)
 	}
 }
 

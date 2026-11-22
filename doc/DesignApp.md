@@ -117,6 +117,41 @@ func main() {
 Software 启动后本轮工作被用户中断；批量重复启动未执行，不计作独立通过。
 用户随后反馈已完成验证并要求提交；不推定其验证次数或后端。
 
+### 3.5 窗口保活与退出清理（2026-11-22）
+
+窗口通过创建期选项决定是否阻止应用自动退出：
+
+```go
+gui.WindowOptions{NoKeepRunning: true}
+```
+
+NoKeepRunning 默认为 false，保留普通窗口行为。该选项只由 GUI 解释，不传给 platform，
+不改变 Chrome、SkipTaskbar、模态、激活、原生父子关系或输入能力。
+
+- QuitOnLastWindowClosed 默认 true。一个已登记的普通窗口完成销毁后，若已无其他
+  存活的普通窗口，且没有已认领的系统 Surface 保活，GUI 请求退出。
+- NoKeepRunning 窗口不阻止上述退出，其自身关闭也不发起自动退出。只创建这类窗口
+  的应用需要主动 Quit；创建和显示期间不会因为普通窗口数为零而立即退出。
+- 隐藏及最小化的普通窗口仍保活。关闭请求被否决时不改变窗口参与状态。
+  全局 SetQuitOnLastWindowClosed(false) 保留显式退出模式；重新开启不立即触发退出。
+- 销毁回调中新建普通窗口可以继续保活；新建 NoKeepRunning 窗口不能延长运行。
+  判断基于回调后的存活窗口。创建失败的未登记窗口及重复移除不发起自动退出。
+- 全部窗口仍属于创建它的 Application，照常参与 Windows、Surfaces、语义快照与资源
+  管理。NoKeepRunning 不使窗口脱离应用；本轮不增加窗口类型或通用生命周期枚举。
+
+退出先标记应用停止，再发出一次 ConnectShutdown 通知，允许 UI Root 释放连接和自己
+管理的宿主；随后 GUI 对剩余窗口做最终销毁。遍历使用快照，允许销毁回调重入销毁其他
+窗口。退出清理使用 Destroy，不重新询问 CloseRequest；已有帧内延迟释放顺序继续适用，
+Painter 在 End 后释放。退出期间创建窗口返回 ErrUnavailable，原生创建回调中发生退出
+也不能在返回时补登记窗口。系统 Surface 继续沿现有系统宿主生命周期清理。
+
+参考公开契约：[Qt 6.12 WA_QuitOnClose](https://doc.qt.io/qt-6.12/qt.html#WidgetAttribute-enum)
+按窗口决定其是否参与应用自动退出判断；
+[GTK 4.24 Application.add_window](https://docs.gtk.org/gtk4/method.Application.add_window.html)
+以应用关联的窗口维持运行。GOUI 采用独立的保活参与开关，保留应用对所有窗口的所有权，
+不通过撤销应用关联改变资源或命令范围，也不引入 Qt 的可见窗口计数规则。
+这些是设计参考；GOUI 实测范围与剩余缺口见 Plan。
+
 ## 4. 声明式状态:StyleSheet 进树,不进签名
 
 StyleSheet 是**产品状态**(运行期真会换主题),归声明式树,由 reconcile 落到 `gui.Application.SetStyleSheet`。运行期换肤 = 改 state → `RequestUpdate` → rebuild → reconciler 发现 sheet 变了 → 调一次 `gui.SetStyleSheet` → 全窗口 relayout,与窗口标题/内容走**同一条差异下发管线**,零特例。

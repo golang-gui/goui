@@ -61,9 +61,12 @@ type Application interface {
 	Run() error
 	// Quit stops timer scheduling and requests event-loop exit. It may be called
 	// from any goroutine; an already-started timer signal may finish.
+	// Any remaining windows are destroyed on the UI thread after shutdown callbacks.
 	Quit()
-	// QuitOnLastWindowClosed reports whether the app quits when its last window
-	// is closed (default true).
+	// QuitOnLastWindowClosed reports whether destroying the last participating
+	// window requests exit (default true). NoKeepRunning windows do not
+	// participate; hidden and minimized ordinary windows do. A claimed system
+	// Surface keeps its existing, system-owned lifetime.
 	QuitOnLastWindowClosed() bool
 	SetQuitOnLastWindowClosed(bool)
 	Post(func())
@@ -240,6 +243,12 @@ func (a *application) shutdown() {
 		a.stopSettings = nil
 	}
 	a.shutdownSignal.Emit()
+	// Declarative owners release their hosts during shutdown notification.
+	// Destroy any remaining imperative windows as the application's final owner.
+	// Destruction callbacks may destroy another window in this snapshot.
+	for _, win := range slices.Clone(a.windows) {
+		win.Destroy()
+	}
 	if a.systemSurface != nil {
 		a.systemSurface.Destroy()
 	}
@@ -315,6 +324,11 @@ func (a *application) NewWindow(options *WindowOptions) (Window, error) {
 	win, err := newWindow(a, opt.normalized())
 	if err != nil {
 		return nil, err
+	}
+	// Native creation can synchronously reenter shutdown before registration.
+	if a.quitting.Load() || win.destroyed {
+		win.Destroy()
+		return nil, platform.ErrUnavailable
 	}
 	a.windows = append(a.windows, win)
 	return win, nil
@@ -480,10 +494,20 @@ func (a *application) removeSurface(host Surface) {
 
 func (a *application) removeWindow(win *window) {
 	index := slices.Index(a.windows, win)
-	if index >= 0 {
-		a.windows = slices.Delete(a.windows, index, index+1)
+	if index < 0 {
+		return
 	}
-	if a.quitOnLastWindowClosed && len(a.windows) == 0 && (a.systemSurface == nil || !a.systemSurface.claimed || a.systemSurface.destroyed) {
-		a.Quit()
+	a.windows = slices.Delete(a.windows, index, index+1)
+	if win.noKeepRunning || !a.quitOnLastWindowClosed || a.quitting.Load() {
+		return
 	}
+	for _, remaining := range a.windows {
+		if !remaining.destroyed && !remaining.noKeepRunning {
+			return
+		}
+	}
+	if a.systemSurface != nil && a.systemSurface.claimed && !a.systemSurface.destroyed {
+		return
+	}
+	a.Quit()
 }

@@ -69,6 +69,10 @@ Native defaults never automatically become integrated after a backend gains
 support. gui decides fallback policy; ui only reconciles gui declarations.
 Creation options cannot change for an existing ui window identity.
 
+GUI WindowOptions.NoKeepRunning independently controls whether a window keeps
+the application running. It is not a native decoration or window-type flag and
+is not passed to platform. See the [application lifetime contract](DesignApp.md#35-窗口保活与退出清理2026-11-22).
+
 ## Explicit Widget composition
 
 Chrome does not insert an application root or a HeaderBar. Applications compose

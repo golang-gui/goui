@@ -46,6 +46,7 @@ type chromeTestPlatform struct {
 	creationError, painterError error
 	unsupportedIntegrated       bool
 	name                        string
+	onPainter                   func()
 }
 
 func (p *chromeTestPlatform) Name() string { return p.name }
@@ -73,6 +74,9 @@ func (p *chromeTestPlatform) NewWindow(size geometry.Size, handler platform.Even
 	return p.native, nil
 }
 func (p *chromeTestPlatform) NewPainter(platform.Surface) (graphics.Painter, error) {
+	if p.onPainter != nil {
+		p.onPainter()
+	}
 	return nil, p.painterError
 }
 func (*chromeTestPlatform) NewInputMethod(platform.Window, platform.InputMethodHandler) (platform.InputMethod, error) {
