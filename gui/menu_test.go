@@ -1866,3 +1866,357 @@ func TestMenuSubmenuPointerEnterHonorsStationaryBaseline(t *testing.T) {
 		t.Fatal("首次真正 Enter 未按延迟展开")
 	}
 }
+
+func TestMenuSubmenuBodyOverlap(t *testing.T) {
+	for _, left := range []bool{false, true} {
+		t.Run(fmt.Sprint(left), func(t *testing.T) {
+			_, _, makePopup := transientFixture(t)
+			pm := NewPopoverMenu(makePopup(nil).anchor)
+			t.Cleanup(pm.Destroy)
+			child := NewMenu()
+			leaf := child.Append("Leaf", nil)
+			model := NewMenu()
+			branch := model.AppendSubmenu("Branch", child)
+			pm.SetMenu(model)
+			position := geometry.Point{}
+			if left {
+				position.X = 850
+			}
+			if err := pm.ShowAt(position); err != nil {
+				t.Fatal(err)
+			}
+			pm.activate(branch)
+			if pm.child == nil || !pm.child.Visible() {
+				t.Fatal("分支未展开")
+			}
+			parent, descendant := pm.nativeHost(), pm.child.nativeHost()
+			parentBody, childBody := parent.bodyRect(), descendant.bodyRect()
+			parentBody.X += parent.requestedPosition.X
+			childBody.X += descendant.requestedPosition.X
+			overlap := parentBody.X + parentBody.Width - childBody.X
+			if left {
+				overlap = childBody.X + childBody.Width - parentBody.X
+			}
+			// 独立预期：菜单主体重叠 4 DIP，不以阴影边缘或被测常量作参考。
+			if overlap != 4 {
+				t.Fatal("父子主体重叠不等于 4 DIP", overlap)
+			}
+			parentY := pm.rowFor(branch).windowRect().Y + parent.requestedPosition.Y
+			childY := pm.child.rowFor(leaf).windowRect().Y + descendant.requestedPosition.Y
+			if parentY != childY {
+				t.Fatal("水平重叠改变了首行的垂直对齐", parentY, childY)
+			}
+		})
+	}
+}
+
+func TestMenuSubmenuClosesImmediatelyOnAnotherTarget(t *testing.T) {
+	for _, target := range []string{"leaf", "disabled", "padding", "branch"} {
+		t.Run(target, func(t *testing.T) {
+			w, plat, makePopup := transientFixture(t)
+			q := newTimerTestQueue(t)
+			w.app = q.app
+			pm := NewPopoverMenu(makePopup(nil).anchor)
+			t.Cleanup(pm.Destroy)
+			child := NewMenu()
+			child.Append("Leaf", nil)
+			model := NewMenu()
+			source := model.AppendSubmenu("Source", child)
+			other := model.Append("Other", nil)
+			disabled := model.Append("Disabled", nil)
+			disabled.SetEnabled(false)
+			next := model.AppendSubmenu("Next", child)
+			pm.SetMenu(model)
+			if err := pm.ShowAt(geometry.Point{}); err != nil {
+				t.Fatal(err)
+			}
+			pm.activate(source)
+			sourceRow := pm.rowFor(source)
+			_ = pm.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: sourceRow.windowRect().Center()})
+			var point geometry.Point
+			var want *MenuItem
+			switch target {
+			case "leaf":
+				want = other
+			case "disabled":
+				point = pm.rowFor(disabled).windowRect().Center()
+			case "branch":
+				want = next
+			case "padding":
+				point = geometry.Point{X: 1, Y: 1}
+			}
+			if want != nil {
+				point = pm.rowFor(want).windowRect().Center()
+			}
+			_ = pm.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: point})
+			if pm.child.Visible() || pm.expanded != nil || sourceRow.presentationState().Has(style.Hovered) {
+				t.Fatal("离开分支后仍在等待关闭或保留旧高亮")
+			}
+			if pm.content.active != want {
+				t.Fatal("活动项没有立即跟随新命中", pm.content.active, want)
+			}
+			if target == "branch" {
+				if pm.hoverTimer == nil || !pm.hoverTimer.Active() {
+					t.Fatal("新分支未独立等待展开")
+				}
+				q.advance(249 * time.Millisecond)
+				if len(q.posts) != 0 {
+					q.dispatch(t)
+				}
+				if pm.child.Visible() || !pm.hoverTimer.Active() {
+					t.Fatal("新分支提前展开")
+				}
+				q.advance(time.Millisecond)
+				q.dispatch(t)
+				if !pm.child.Visible() || pm.expanded != next || len(plat.natives) != 2 {
+					t.Fatal("新分支没有展开或未复用同层资源")
+				}
+			} else if pm.hoverTimer != nil && pm.hoverTimer.Active() {
+				t.Fatal("无新分支时仍安排了关闭计时")
+			}
+		})
+	}
+}
+
+func TestMenuSubmenuTransitionHasOneDeadline(t *testing.T) {
+	w, _, makePopup := transientFixture(t)
+	q := newTimerTestQueue(t)
+	w.app = q.app
+	pm := NewPopoverMenu(makePopup(nil).anchor)
+	t.Cleanup(pm.Destroy)
+	child := NewMenu()
+	for range 8 {
+		child.Append("Leaf", nil)
+	}
+	model := NewMenu()
+	branch := model.AppendSubmenu("Branch", child)
+	model.Append("Other 1", nil)
+	last := model.Append("Other 2", nil)
+	pm.SetMenu(model)
+	if err := pm.ShowAt(geometry.Point{}); err != nil {
+		t.Fatal(err)
+	}
+	pm.activate(branch)
+	move := func(point geometry.Point) {
+		t.Helper()
+		if err := pm.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: point}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	move(pm.rowFor(branch).windowRect().Center())
+	// 右下斜移经过兄弟行，仍处于通向子菜单的三角区域。
+	move(geometry.Point{X: 120, Y: 48})
+	if !pm.child.Visible() || pm.content.active != branch || pm.hoverTimer == nil || !pm.hoverTimer.Active() {
+		t.Fatal("朝子菜单斜移时没有保护当前分支")
+	}
+	q.advance(200 * time.Millisecond)
+	move(geometry.Point{X: 130, Y: 76})
+	q.advance(299 * time.Millisecond)
+	if len(q.posts) != 0 {
+		q.dispatch(t)
+	}
+	if !pm.child.Visible() || !pm.hoverTimer.Active() {
+		t.Fatal("过渡保护提前结束")
+	}
+	q.advance(time.Millisecond)
+	q.dispatch(t)
+	if pm.child.Visible() || pm.expanded != nil || pm.content.active != last {
+		t.Fatal("换行延长了原先的 500 ms 截止时间")
+	}
+}
+
+func TestMenuSubmenuEnterCancelsTransition(t *testing.T) {
+	for _, leaveFirst := range []bool{false, true} {
+		t.Run(fmt.Sprint(leaveFirst), func(t *testing.T) {
+			w, _, makePopup := transientFixture(t)
+			q := newTimerTestQueue(t)
+			w.app = q.app
+			pm := NewPopoverMenu(makePopup(nil).anchor)
+			t.Cleanup(pm.Destroy)
+			child := NewMenu()
+			for range 8 {
+				child.Append("Leaf", nil)
+			}
+			model := NewMenu()
+			branch := model.AppendSubmenu("Branch", child)
+			model.Append("Other", nil)
+			pm.SetMenu(model)
+			if err := pm.ShowAt(geometry.Point{}); err != nil {
+				t.Fatal(err)
+			}
+			pm.activate(branch)
+			point := pm.rowFor(branch).windowRect().Center()
+			_ = pm.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: point})
+			_ = pm.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 120, Y: 48}})
+			// 先把到期任务送入 Post 队列，再用真实 Enter 路径取消。
+			q.advance(500 * time.Millisecond)
+			leave := func() {
+				_ = pm.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerLeave, Position: point})
+			}
+			if leaveFirst {
+				leave()
+			}
+			leafPoint := pm.child.rowFor(child.ItemAt(0)).windowRect().Center()
+			_ = pm.child.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerEnter, Position: leafPoint})
+			if !leaveFirst {
+				leave()
+			}
+			if !pm.child.Visible() || !pm.rowFor(branch).presentationState().Has(style.Hovered) {
+				t.Fatal("父层 Leave 误关了子层或丢失展开路径提示")
+			}
+			if pm.hoverTimer.Active() {
+				t.Fatal("进入子层后仍有旧过渡任务")
+			}
+			if len(q.posts) != 0 {
+				q.dispatch(t)
+			}
+			if !pm.child.Visible() {
+				t.Fatal("旧任务仍可关闭已进入的子菜单")
+			}
+		})
+	}
+}
+
+func TestMenuSubmenuOwnerMotionClearsBranch(t *testing.T) {
+	for _, modal := range []bool{false, true} {
+		t.Run(fmt.Sprint(modal), func(t *testing.T) {
+			w, _, makePopup := transientFixture(t)
+			_ = w.DispatchEvent(events.SizeEvent{Width: 1000, Height: 800, PixelWidth: 1000, PixelHeight: 800})
+			pm := NewPopoverMenu(makePopup(nil).anchor)
+			pm.SetModal(modal)
+			t.Cleanup(pm.Destroy)
+			child := NewMenu()
+			child.Append("Leaf", nil)
+			model := NewMenu()
+			branch := model.AppendSubmenu("Branch", child)
+			pm.SetMenu(model)
+			if err := pm.ShowAt(geometry.Point{}); err != nil {
+				t.Fatal(err)
+			}
+			pm.activate(branch)
+			_ = pm.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: pm.rowFor(branch).windowRect().Center()})
+			outside := events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 500, Y: 500}}
+			_ = w.DispatchEvent(outside)
+			if !pm.Visible() || pm.child.Visible() || pm.expanded != nil || pm.content.active != nil {
+				t.Fatal("宿主上的明确移动未立即清除子分支，或错误关闭了根菜单")
+			}
+			pm.content.selectItem(branch)
+			_ = pm.popover.DispatchEvent(shortcutPress(events.KeyArrowRight, 0))
+			_ = w.DispatchEvent(outside)
+			if !pm.child.Visible() {
+				t.Fatal("静止坐标的重复移动关闭了键盘展开的子菜单")
+			}
+		})
+	}
+}
+
+func TestMenuSubmenuOwnerMotionPreservesReentrantBranch(t *testing.T) {
+	w, _, makePopup := transientFixture(t)
+	pm := NewPopoverMenu(makePopup(nil).anchor)
+	t.Cleanup(pm.Destroy)
+	child := NewMenu()
+	child.Append("Leaf", nil)
+	model := NewMenu()
+	a := model.AppendSubmenu("A", child)
+	b := model.AppendSubmenu("B", child)
+	pm.SetMenu(model)
+	if err := pm.ShowAt(geometry.Point{}); err != nil {
+		t.Fatal(err)
+	}
+	pm.activate(a)
+	previous := w.Popovers()[1]
+	previous.ConnectClosed(func() { pm.activate(b) })
+	_ = w.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 500, Y: 500}})
+	if !pm.Visible() || !pm.child.Visible() || pm.expanded != b || previous.Visible() {
+		t.Fatal("旧关闭清理覆盖了回调新建的分支")
+	}
+}
+
+func TestMenuSubmenuTransitionStartsOnSourceRow(t *testing.T) {
+	w, _, makePopup := transientFixture(t)
+	q := newTimerTestQueue(t)
+	w.app = q.app
+	pm := NewPopoverMenu(makePopup(nil).anchor)
+	t.Cleanup(pm.Destroy)
+	child := NewMenu()
+	for range 8 {
+		child.Append("Leaf", nil)
+	}
+	model := NewMenu()
+	other := model.Append("Other", nil)
+	model.Append("Middle", nil)
+	model.AppendSubmenu("Branch", child)
+	w.cursorInside, w.cursorPosition = true, geometry.Point{X: 80, Y: 40}
+	pm.SetMenu(model)
+	if err := pm.ShowAt(geometry.Point{}); err != nil {
+		t.Fatal(err)
+	}
+	_ = pm.popover.DispatchEvent(shortcutPress(events.KeyEnd, 0))
+	_ = pm.popover.DispatchEvent(shortcutPress(events.KeyArrowRight, 0))
+	_ = pm.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: pm.rowFor(other).windowRect().Center()})
+	if pm.child.Visible() || pm.expanded != nil || pm.content.active != other {
+		t.Fatal("旧坐标不在源行时仍启动了斜移保护")
+	}
+}
+
+func TestMenuSubmenuOwnerMotionPreservesCapture(t *testing.T) {
+	w, _, makePopup := transientFixture(t)
+	pm := NewPopoverMenu(makePopup(nil).anchor)
+	t.Cleanup(pm.Destroy)
+	child := NewMenu()
+	leaf := child.Append("Leaf", nil)
+	model := NewMenu()
+	branch := model.AppendSubmenu("Branch", child)
+	pm.SetMenu(model)
+	if err := pm.ShowAt(geometry.Point{}); err != nil {
+		t.Fatal(err)
+	}
+	pm.activate(branch)
+	row := pm.child.rowFor(leaf)
+	capture := &gestureProbe{EventControllerBase: NewEventControllerBase(PhaseCapture)}
+	row.AddEventController(capture)
+	point := row.windowRect().Center()
+	_ = pm.child.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: point, Button: events.PointerButtonLeft, Buttons: events.PointerButtonLeftDown})
+	if pm.child.nativeHost().dispatcher.captureTarget == nil {
+		t.Fatal("前提失败：子项未取得捕获")
+	}
+	_ = w.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 500, Y: 500}, Buttons: events.PointerButtonLeftDown})
+	if !pm.child.Visible() || pm.child.nativeHost().dispatcher.captureTarget == nil {
+		t.Fatal("宿主移动越过了子项的既有捕获")
+	}
+	_ = pm.child.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Position: point, Button: events.PointerButtonLeft})
+	if !pm.child.Visible() || pm.child.nativeHost().dispatcher.captureTarget != nil || capture.accepted != 1 || capture.canceled != 0 {
+		t.Fatal("捕获释放未正常完成原有手势")
+	}
+}
+
+func TestMenuSubmenuKeyboardReturnKeepsSource(t *testing.T) {
+	for _, key := range []events.Key{events.KeyArrowLeft, events.KeyEscape} {
+		t.Run(fmt.Sprint(key), func(t *testing.T) {
+			_, _, makePopup := transientFixture(t)
+			pm := NewPopoverMenu(makePopup(nil).anchor)
+			t.Cleanup(pm.Destroy)
+			child := NewMenu()
+			child.Append("Leaf", nil)
+			model := NewMenu()
+			branch := model.AppendSubmenu("Branch", child)
+			model.Append("Other", nil)
+			pm.SetMenu(model)
+			if err := pm.ShowAt(geometry.Point{}); err != nil {
+				t.Fatal(err)
+			}
+			_ = pm.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: pm.rowFor(branch).windowRect().Center()})
+			_ = pm.popover.DispatchEvent(shortcutPress(events.KeyHome, 0))
+			_ = pm.popover.DispatchEvent(shortcutPress(events.KeyArrowRight, 0))
+			_ = pm.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerLeave, Position: pm.rowFor(branch).windowRect().Center()})
+			if pm.content.active != nil {
+				t.Fatal("父表面离开后仍保留鼠标活动项")
+			}
+			_ = pm.child.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerEnter, Position: pm.child.rowFor(child.ItemAt(0)).windowRect().Center()})
+			_ = pm.popover.DispatchEvent(shortcutPress(key, 0))
+			if !pm.Visible() || pm.child.Visible() || pm.content.active != branch || !pm.rowFor(branch).Snapshot().Selected {
+				t.Fatal("键盘返回父层后丢失源项选中位置")
+			}
+		})
+	}
+}

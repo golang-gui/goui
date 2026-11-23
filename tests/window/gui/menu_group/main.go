@@ -1,5 +1,6 @@
 // MenuButtonGroup 与非模态菜单的窗口回归，需要真实桌面、字体及原生绘图后端。
 // 启动：go run ./tests/window/gui/menu_group；-auto 自动走正常 Window.DispatchEvent。
+// 自动模式先把真实指针停在测试窗口外，运行中不同时输入，避免与派发坐标混用。
 // 可加 -basic、-dark，使用 GOUI_PLAT_PAINTER 和 GOUI_PLAT_SCALE 选择后端及缩放。
 // 初始 File/Edit/View 同组，Other 独立组，Run 是普通按钮，Disabled/Empty 不可打开。
 // 操作：空闲悬停不打开；点击 File 后移到 Edit/View 切换，左右键循环、上下与 Enter
@@ -7,6 +8,8 @@
 // 键盘切换后指针不动应保持该菜单，真实移动才重新跟随；Tab 关闭并继续焦点导航。Rebuild 更新动作代次，Dark 切换外观，组及控件身份保留。
 // 级联菜单：File/Edit/View 的 Recent → More 可展开三级；悬停延迟展开，斜移到子层
 // 不应切到掠过的兄弟项；Right/Left/逐次 Esc 分层进入返回，叶项关闭整链且执行一次。
+// 子菜单主体应重叠父菜单约 4 DIP。移到其他父项或宿主留白时，子层和旧父项背景立即消失；
+// 向子层斜移仍可跨行到达，进入后不被旧计时关闭；屏幕右侧翻转后同样验证。
 // F6/Check 输出 ASSERT PASS、JSON 状态及窗口局部 DIP 的 BOUNDS，仅供观察和定位。
 // 自动场景还验证最新动作闭包、主题重建、空菜单、禁用和不同组隔离；没有语义动作接口。
 // 1x/1.5x/2x、Basic/Modern、亮暗重复。最终记录真实图像资源类型及 PixelScale。
@@ -223,6 +226,35 @@ func main() {
 						require(len(win.Popovers()) == 1, "Left did not return to root")
 						key(events.KeyEscape)
 						require(len(win.Popovers()) == 0, "root Escape did not finish the chain")
+						click("file")
+						key(events.KeyEnd)
+						key(events.KeyArrowRight)
+					case 15:
+						require(len(win.Popovers()) == 2, "child menu missing before immediate dismissal")
+						target := win.Popovers()[0]
+						var action gui.WidgetInfo
+						var find func(gui.WidgetInfo)
+						find = func(info gui.WidgetInfo) {
+							if info.Role == gui.RoleMenuItem && info.Text == "Action" {
+								action = info
+							}
+							for _, child := range info.Children {
+								find(child)
+							}
+						}
+						find(target.Widget().Snapshot())
+						require(action.Bounds.Width > 0, "Action row missing")
+						must(target.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: action.Bounds.Center()}))
+						require(len(win.Popovers()) == 1, "moving to a leaf delayed closing the old submenu")
+						key(events.KeyEnd)
+						key(events.KeyArrowRight)
+						require(len(win.Popovers()) == 2, "child menu did not reopen")
+						// 选择宿主右下留白，避免输入框中心恰好被菜单覆盖。
+						bounds := win.Widget().Snapshot().Bounds
+						must(win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: bounds.X + bounds.Width - 12, Y: bounds.Y + bounds.Height - 12}}))
+						require(len(win.Popovers()) == 1 && button("file").Opened(), "owner motion did not close only the child immediately")
+						key(events.KeyEscape)
+						require(len(win.Popovers()) == 0, "root menu survived Escape")
 						complete = true
 						fmt.Printf("AUTO PASS painter=%s scale=%g\n", p.painter, p.scale)
 						win.Destroy()

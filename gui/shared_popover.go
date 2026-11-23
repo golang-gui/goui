@@ -61,6 +61,7 @@ type sharedPopover struct {
 	modal, autoDismiss bool
 	tooltip            bool
 	filterEvent        func(events.Event) bool
+	ownerPointer       func(events.PointerEvent)
 	anchorArea         *geometry.Rectangle
 	destroyed          bool
 	slot               *sharedPopoverSlot
@@ -301,6 +302,7 @@ func (p *sharedPopover) Show() error {
 	}
 	popup := s.popup
 	popup.filterEvent = p.filterEvent
+	popup.ownerPointer = p.ownerPointer
 	popup.SetAnchor(p.anchor)
 	popup.anchorArea = p.anchorArea
 	popup.SetStyleName(p.styleName)
@@ -365,6 +367,7 @@ func (s *sharedPopoverSlot) evict(p *sharedPopover) {
 		p.unmount = nil
 	}
 	s.popup.filterEvent = nil
+	s.popup.ownerPointer = nil
 	s.popup.SetWidget(nil)
 	s.popup.SetAnchor(nil)
 }

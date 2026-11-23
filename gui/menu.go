@@ -298,6 +298,9 @@ func (pm *PopoverMenu) ensurePopover() {
 		p.SetModal(pm.modal)
 		p.SetAutoDismiss(pm.parent == nil)
 		p.(*sharedPopover).filterEvent = pm.filterEvent
+		if pm.parent == nil {
+			p.(*sharedPopover).ownerPointer = pm.observeOwnerPointer
+		}
 		p.ConnectDismissRequest(pm.Hide)
 		p.ConnectClosed(func() {
 			if pm.content != nil && pm.popover == p && !p.Visible() {
@@ -506,11 +509,10 @@ func (c *menuPointerController) HandleCrossing(ctx CrossingContext) {
 		return
 	}
 	if ctx.Direction() == CrossingLeave {
-		if c.content.presenter == nil || c.content.presenter.expanded == nil {
-			if c.content.presenter != nil {
-				c.content.presenter.cancelHover()
-			}
-			c.content.selectItem(nil)
+		c.content.selectItem(nil)
+		if pm := c.content.presenter; pm != nil {
+			position, valid := ctx.Position()
+			pm.pointerLeave(position, valid)
 		}
 	} else if position, ok := ctx.Position(); ok {
 		// Native Enter delivers crossing without an ordinary pointer move.
