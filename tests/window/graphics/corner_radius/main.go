@@ -6,6 +6,8 @@
 // 背景为深灰色，环带中央露出背景，没有填充覆盖或重复合成的深色连接线。
 // 操作：点击重绘；Space 切换样例排列。检查每块四角与相邻边相切，边框内部透明；
 // 阴影跟随各自轮廓，不出现统一最大圆角、四块拼接或左右偏移。
+// -light 以亮色背景启动，T 切换亮暗；Space 可显示新增的 24/4/24/4 DIP 样例。
+// Windows Direct2D 1x 重点检查亮色下大圆角与 2 DIP 边框，弧形不应有局部加粗的台阶。
 // 程序在首次真实 Paint 前，对 1/1.25/1.5/2x 离屏目标做像素断言，包含连接处和退化；
 // 输出 PIXELS PASS、后端、系统与缩放。-auto 真实提交一帧后退出，不替代外观检查。
 // 平台差异：AA 曲线可略有差异，几何内外侧及预乘颜色必须一致；记录实际后端，
@@ -34,7 +36,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/utils"
 )
 
-var cases = []geometry.CornerRadius{{TopLeft: 1, TopRight: 18, BottomRight: 5, BottomLeft: 0}, {TopLeft: 36, TopRight: 0, BottomRight: 36, BottomLeft: 0}, geometry.UniformCornerRadius(1), {TopLeft: 0, TopRight: 0, BottomRight: 18, BottomLeft: 18}}
+var cases = []geometry.CornerRadius{{TopLeft: 1, TopRight: 18, BottomRight: 5, BottomLeft: 0}, {TopLeft: 36, TopRight: 0, BottomRight: 36, BottomLeft: 0}, geometry.UniformCornerRadius(1), {TopLeft: 0, TopRight: 0, BottomRight: 18, BottomLeft: 18}, {TopLeft: 24, TopRight: 4, BottomRight: 24, BottomLeft: 4}}
 
 func main() {
 	if err := run(); err != nil {
@@ -43,6 +45,7 @@ func main() {
 }
 func run() error {
 	auto := flag.Bool("auto", false, "断言并提交一帧后退出")
+	light := flag.Bool("light", false, "以亮色背景启动；T 可切换")
 	flag.Parse()
 	plat, err := platform.NewPlatform(platform.DefaultName(), "org.golang-gui.CornerRadius")
 	if err != nil {
@@ -73,7 +76,11 @@ func run() error {
 			fmt.Printf("PIXELS PASS OS=%s painter=%s scale=%g\n", runtime.GOOS, painter.Name(), size.PixelWidth/size.Width)
 		}
 		painter.Begin(size.PixelWidth, size.PixelHeight, size.PixelWidth/size.Width)
-		painter.Clear(graphics.RGB(45, 48, 54))
+		background := graphics.RGB(45, 48, 54)
+		if *light {
+			background = graphics.RGB(245, 245, 248)
+		}
+		painter.Clear(background)
 		for i := range 4 {
 			r := cases[(i+order)%len(cases)]
 			body := geometry.Rect(30+float32(i)*160, 45, 120, 100)
@@ -110,6 +117,10 @@ func run() error {
 			}
 			if e.Key == events.KeySpace {
 				order = (order + 1) % len(cases)
+				paint()
+			}
+			if e.Key == events.KeyT {
+				*light = !*light
 				paint()
 			}
 		}
