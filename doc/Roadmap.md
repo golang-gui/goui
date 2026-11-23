@@ -94,7 +94,7 @@ Painter，关闭、控件切换及卸载均归还资源，窗口销毁统一释�
 独立；Tooltip 不抢占菜单／列表。四组 Linux Software／OpenGL、Windows Direct2D、
 macOS OpenGL 原生真实输入均完成 40 次身份与创建次数验证。完整契约见
 [Popup](DesignSharedPopover.md)，验证与范围见 [Plan](Plan.md)。
-级联子菜单另行设计，不把窗口共享宿主扩成应用级池或模态栈。
+级联现已按每个呈现宿主一级共享子槽扩展，不把窗口共享宿主扩成应用级池或模态栈。
 
 ## 原生拖拽预览失败降级（2026-11-14）
 
@@ -476,7 +476,7 @@ CoreText 共享初始化与 GLES 最小上下文随后完成，消费使用独�
 v0.6.0 已正式发布，三平台 Demo 为0.6.0 / build 1，增加输入策略分栏和跨页诊断采集，
 文案保持八语言。发布及逐平台验收见 [ReleaseV060](ReleaseV060.md) 与 [Plan](Plan.md)。
 实现范围与实际平台验收分开记录；
-Linux arm64、原生 Wayland、触摸、系统通知／托盘、子菜单仍按后文规划推进。
+Linux arm64、原生 Wayland、触摸和系统通知／托盘仍按后文规划推进。
 
 ## 共享操作与菜单快捷键列（2026-11-04）
 
@@ -653,18 +653,29 @@ InkBounds、文本布局图片或 Widget 回调接口。Linux arm64 全仓的既
 
 <a id="future-submenu"></a>
 
-### 子菜单与跨层键盘导航：待实现
+### 子菜单与跨层键盘导航：已实现（2026-11-23）
 
-- 基线：MenuModel／PopoverMenu、单层键盘导航、原生独立表面、工作区退避、
-  嵌套锚点 owner 解析和中性菜单样式已实现。
-- 缺口：递归 Submenu 模型、父菜单拥有子宿主、多级展开／收起、跨层键盘活动层、
-  侧向定位、移动保护、动态分支清理及递归 UI 声明。
-- 设计：[DesignMenuSubmenu](DesignMenuSubmenu.md)，2026-10-25 修订。根 Popover
-  保持唯一模态登记，Esc 改为内容优先处理；声明式采用 ui.Submenu，结构不变时
-  刷新 Action 闭包，同步返回与异步错误信号分别报告结果。上述新增行为均待实现。
-- 先模型／生命周期／点击定位，再跨层输入与动态更新，最后 UI／Basic 与 Modern
-  外观及三平台验收。不增加模态栈、全局菜单管理器、菜单栏或平台公共接口；
-  不把本功能列为当前其他工作的前置条件。
+- MenuItem.Submenu／Menu.AppendSubmenu、ui.MenuItem.Submenu 支持递归模型和显式空分支。
+  Action／Command／Submenu 来源互斥，递归命令沿用宿主范围，保留最新声明回调。
+- Window 与普通 Popover 各自持有一个共享子槽，父子同时呈现，同层切换复用资源；
+  Hide 保留缓存，实际宿主销毁递归释放。模型和虚拟行不持有原生缓存。
+- 唯一模态根或 MenuButton 显式转发，子层经过普通分发／控制器处理。支持逐级 Esc、
+  逻辑左右键、悬停延迟、有限斜移保护、侧向退避和整链关闭后执行一次。
+- Basic／Modern 提供矢量箭头及 expanded 反馈，语义包含 HasSubmenu／Expanded。
+  设计见 [DesignMenuSubmenu](DesignMenuSubmenu.md)，实际验证和平台缺口见 Plan。
+
+<a id="future-menu-bar"></a>
+
+### MenuBar 与 macOS 原生菜单栏：设计草案，待实现
+
+- [DesignMenuBar](DesignMenuBar.md) 保存模型驱动的 MenuBar、默认 Auto／InWindow
+  模式、构建与本地呈现分离、窗口来源选择、应用默认菜单和原生动作分发边界。
+- MenuBar 接收递归菜单描述，不接收任意 MenuButton.Child。窗口内呈现依赖完整
+  子菜单与父子协调；macOS 分支将同一模型投影为 NSMenu，由 AppKit 跟踪原生层级。
+- 首版范围为桌面：Windows／当前 Linux 使用窗口内菜单，macOS 支持双模式；Linux
+  全局菜单协议、移动端导航菜单、应用菜单角色 API 等未据此实现或验收。
+- 原生能力与事件接口、呈现参与机制、快捷键去重及多窗口来源细节须先复核验证，
+  再按 platform → gui → ui 集成；本轮只更新设计文档。
 
 <a id="future-popover-ime"></a>
 

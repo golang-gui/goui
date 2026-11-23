@@ -170,19 +170,16 @@ SetModalTarget(ModalTarget)            // 装 / 卸(nil)当前模态目标
 - popover 的 hover/点击由**它自己的表面事件**(经它自己的 `EventDispatcher`)驱动,window 只转发键盘 + 触发 dismiss,**不换算坐标**。
 - **`EventDispatcher` 独立化**:吃 `EventTarget{Widget();FocusedWidget();SetFocusedWidget()}`,window 和 popover 都实现,一份分发两处用。
 
-以上描述当前单层模态路径。[子菜单设计 §4～5](DesignMenuSubmenu.md#4-原生焦点与模态登记)
-在 2026-10-25 修订为：根 Popover 继续作为唯一 ModalTarget，子 Popover 不重复登记；
-Window 将 Esc 连同其他按键转交，Popover 先让内容处理 Esc，未处理时才默认关闭。
-当前已实现通用 Esc 转交与非模态显式按键转发；AutoDismiss 在 Popover 处理
-Esc 时请求关闭。子菜单需要的内容优先、活动层路由和逐层收起仍未实现。
-其非模态根路径需沿用 MenuButton 的明确输入转发，
-不能将未来的多级关闭行为写成当前 Popover 契约。
+[子菜单的按键路由](DesignMenuSubmenu.md#5-按键路由与活动层) 保持根 Popover 为唯一
+ModalTarget，子层不重复登记；非模态根沿用 MenuButton 的明确转发。
+Esc 先进入活动层的普通控制器，未处理且原显示仍有效时才按 AutoDismiss 默认关闭。
+级联的逐层返回归 PopoverMenu，不由通用 Popover 推导菜单层级。
 
 **分层解耦原则(本轮重构确立)**:
 - 公开协议按实际替换需求设计；Widget／IMContext 等有明确约束的封印接口不被一概否定。共享 rootBase 是宿主的内部状态 helper，不是另一套公开控件体系。
 - 控件只依赖 **`Root`**(`Widget()`/`RequestPaint()`/`RequestLayout()`),绝不碰具体 `*window`/`*popover`;焦点相关经 `EventTarget`。
 - **依赖方向**:`Window→Popover` 经 `ModalTarget`(输入,宿主→内容的自然向);`Popover→Window` 经公开 `Window`(`SetModalTarget` 登记 + `PlatformWindow()` 逃生口建面 + Surface 资源登记与最终清理)。普通 Popover 自持原生面并向当前 Surface 登记；SharedPopover 的普通 Popover 缓存由
-  owner 唯一持有，平台层不识别菜单或 Tooltip。
+  最近呈现宿主唯一持有，原生所有者仍是窗口；平台层不识别菜单或 Tooltip。
 - `Window` 增逃生口 **`PlatformWindow() platform.Window`**(类比 `NativeHandle`);platform/typography 从全局 `App` 取。
 - 宿主的 root 被销毁后经 **`liveRoot`**(查 widget 的 `destroyed` 终态)在 `Widget()`/`paint()` 惰性丢弃——不需要宿主回调接口。
 
@@ -191,15 +188,16 @@ Esc 时请求关闭。子菜单需要的内容优先、活动层路由和逐层�
 - **普通 Popover 原生资源**(`platform.Popup`+painter):**归 Window**,首次 `Show` 建(绑当前 owner)、`Hide` 保留复用、**owner Surface 销毁**/ `Destroy` 时释放；anchor 卸载只 Hide,**永不悬空**(x11 override-redirect 的 X 父是 root,不随 owner 级联销毁,必须显式收)。`Show` 若发现 anchor 换了窗口则释放旧的重建。
 - **Widget 不加 Destroy 信号**(谁调用语义模糊);popover 靠 unmount 结束显示，由 Surface 兜底释放原生面,已创建原生资源的实例由 Surface 保留；不再使用时显式 `Destroy`，不能依赖 GC 提前回收原生资源。
 
-Menu／MenuItem 和声明绑定、Point／Bottom 定位及工作区退避已实现。子菜单与原生 Popover IME 的缺口见 [未来路线](Roadmap.md)；不因此承诺模态栈、自动 Modal 推导、应用级 Popup 池或新位置 getter。
+Menu／MenuItem 和声明绑定、Point／Bottom 定位及工作区退避已实现。窗口内子菜单已实现，原生 Popover IME 的缺口见 [未来路线](Roadmap.md)；不因此承诺模态栈、自动 Modal 推导、应用级 Popup 池或新位置 getter。
 
 > Window／Popover 已共享内部 rootBase，统一帧、分发、手势和拖放状态，但保留各自原生宿主与模态策略。普通鼠标仍由各自表面处理，不全量转换成 owner 事件。
 
-## Surface 缓存普通 Popover（2026-11-17）
+## 每呈现宿主缓存普通 Popover（2026-11-23）
 
-`NewSharedPopover(anchor)` 返回独立轻量客户端，通过 Surface 的共享槽使用缓存普通 Popover 的
+`NewSharedPopover(anchor)` 返回独立轻量客户端，通过最近 Window／普通 Popover 的共享槽使用缓存普通 Popover 的
 Root、布局、输入、焦点、帧及 Popup/Painter。没有另一种共享 Root，普通 `NewPopover` 保持独立资源。Hide 保留至多一份挂载树；
-切换内容时才卸载旧树。它替代旧的 `NewTransientPopover` 物理资源借用方案。
+切换内容时才卸载旧树。父宿主隐藏先递归关闭后代并保留缓存；实际销毁递归释放。
+同层切换复用，跨层分别持槽；原生所有者解析与共享槽选择分开。它替代旧的 `NewTransientPopover` 物理资源借用方案。
 
 完整 API、所有权、重入与失效、首帧及 GLX 资源目标契约见
 [SharedPopover 设计](DesignSharedPopover.md)。平台 Popup 的 ClientSize 查询实际尺寸，
@@ -264,8 +262,8 @@ Hide／Destroy，Closed 仍只报告实际关闭。锚点及其后代视为内�
 
 窗口复用已显示的 Popover 列表，仅处理本次输入开始前存在的非模态自动关闭
 面。非模态外部按下在关闭后继续到原命中目标；回调销毁窗口、替换根／命中
-目标或显示其他面时停止该次输入，不将事件重新投递到新界面。Esc 只交给
-最上层可自动关闭面并消费；窗口失焦通知已有面。模态目标优先于底层非模态面。
+目标或显示其他面时停止该次输入，不将事件重新投递到新界面。Esc 先交给
+最上层可自动关闭面的内容，未处理才请求默认关闭；窗口失焦通知已有面。模态目标优先于底层非模态面。
 事件始终经 Window.DispatchEvent 或 Popover.DispatchEvent 的正常分发路径，
 没有 MenuButton 专用 Window 分支、跨表面的鼠标事件重放或新浮窗管理器。
 

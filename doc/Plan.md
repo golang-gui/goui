@@ -7303,3 +7303,39 @@ error，原样全仓命令报编译失败；恢复其既有尽力而为调用后
 - [x] Linux X11 / Xfwm4 的 Software、Mesa llvmpipe OpenGL，以及 Windows 10
   Direct2D，各 1x 亮暗自动像素／呈现检查通过。Windows 实际操作 Space／T
   复核新增样例和背景切换，正常关闭；自动运行不代替外观检查。
+
+## 级联子菜单（2026-11-23）
+
+- [x] Window 与普通 Popover 各自延迟持有共享子槽，锚点的最近呈现宿主决定借用槽，
+  原生所有者仍解析到窗口。父子可并存，同层复用；Hide 递归关闭并保留资源，
+  实际宿主／窗口销毁递归释放，覆盖关闭回调替换父内容及转换中销毁的保护。
+- [x] MenuItem.Submenu／Menu.AppendSubmenu 支持借用递归模型，来源互斥、空分支、
+  非可比较模型、共享 DAG 和路径循环拒绝。成员变更维护通知，纯 Action 刷新不重建行。
+- [x] PopoverMenu 管理父子展开与键盘活动层，模态根保持唯一登记；子层不夺焦，
+  根授权后继续正常分发／控制器。支持逐层 Esc／Left、Right／确认、Tab、
+  悬停延迟、同一行移动保留计时、有限斜移保护、主体命中与侧向翻转。
+- [x] 样式失效不取消展开；Enter-only 的真正移入也参与选择／延迟，静止指针下显示
+  及重复 crossing 不误展开。关闭后重验来源再执行一次，错误只由根报告，失败保留父层。
+  Basic／Modern 的 submenu Part 绘制矢量箭头，MenuItemInfo 提供 HasSubmenu／Expanded。
+- [x] ui.MenuItem.Submenu 递归协调 MenuButton／Menu／MenuFor，明确空分支和循环声明；
+  结构不变保留模型与最新动作，CommandRef 可原位替换，深层 DefineCommand 使用现有宿主范围。
+  未向 Root／BuildContext 增加菜单特例。设计见 [DesignMenuSubmenu](DesignMenuSubmenu.md)。
+- [x] 回归归入既有菜单、Popover／共享／定位及 UI 菜单测试，覆盖多级显示、模态授权、
+  激活、回调重入、动态可用性、计时、错误、语义与资源复用。扩展现有 menu_group 窗口程序；
+  menu_pointer 重开后重新取得当次 PopoverTarget，遵循原有借用目标失效契约，像素断言保留。
+- [x] Linux amd64，独立 X11／Xfwm4（关闭合成），`go test -json ./... -count=1`：
+  6368 项测试／子测试通过，82 个有测试包通过，156 个无测试包单列，零失败、零条件跳过。
+  既有 X11 包内测试使用私有窗口／selection，没有更改用户设置。
+- [x] `go test -race ./gui ./ui`、相关 gui／ui／theme 与菜单窗口入口的 `go vet` 通过。
+  Windows amd64、macOS arm64 的 GUI／UI 测试目标及级联窗口入口交叉编译通过。
+- [x] Linux X11／Xfwm4：menu_group 的 Software 1× Modern、Software 2× Basic、
+  Mesa OpenGL 1× Modern 与 1.5× 初始暗色场景通过，覆盖主题重建、三级键盘、整链执行、
+  返回和销毁；menu_pointer 的 Software 1× 既有像素／输入回归通过。
+  原生鼠标复核三级悬停、叶项只执行一次、键盘返回、屏幕右侧向左翻转及后代继续向左。
+- [x] macOS 15.7.7 arm64／OpenGL／应用倍率 1×：menu_group 自动场景及初始暗色场景通过；
+  原生鼠标三级悬停、叶项整链关闭与单次执行通过。自动派发不等同于全部原生输入验收。
+- [ ] Windows 原生桌面当前不可用，多级窗口交互未执行；交叉编译不计作运行通过。
+  原生混合 DPI、复杂多屏边缘、合成器阴影交叠和独立上下文根的多级原生操作仍需专项验收。
+- [x] 保存 [MenuBar／macOS 原生菜单栏](DesignMenuBar.md) 的独立设计草案，明确数据投影、
+  模式、窗口来源及资源边界。
+- [ ] MenuBar 的平台能力／事件、应用角色和多窗口细节待复核；本轮不实现或承诺该能力。

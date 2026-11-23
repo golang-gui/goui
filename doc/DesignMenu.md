@@ -23,21 +23,19 @@
 | `GtkMenuButton` | `MenuButton` | 对齐 `Button` 惯例（单 child + 点击弹出） |
 | `GtkPopover::closed` | `gui.Popover.ConnectClosed` | 信号放宿主（Popover），控件转发 |
 
-**尚未实现**：子菜单与跨层键盘导航，见
-[未来路线](Roadmap.md#future-submenu)。图标、菜单栏、模型级关闭信号和富控件菜单项
-不属于当前 Menu 契约；富内容可组合普通 Popover。工作区尺寸约束／退避、UI 菜单
-声明、通用 `OnContextMenu` 和 TabBar 上下文菜单已经实现，不能再列为缺失能力。
+**已实现**：递归子菜单、跨层键盘导航及侧向定位，见
+[子菜单设计](DesignMenuSubmenu.md)。图标、[MenuBar／macOS 原生菜单栏](DesignMenuBar.md)、
+模型级关闭信号和富控件菜单项不属于当前 Menu 契约；富内容可组合普通 Popover。
+工作区约束、UI 菜单声明、通用 OnContextMenu 和 TabBar 上下文菜单沿用现有支持。
 
-**ui 层**：声明式 `MenuButton`/`MenuItem`/`MenuSeparator`（`ui/menu.go`）已实现，
-只协调到 `gui.MenuButton`，不另建菜单控件体系。"文件 ▾" 用
-`ui.MenuButton("File").Menu(ui.MenuItem("Open", onOpen), …)`，子菜单的未实施设计见
-[子菜单设计 §13](DesignMenuSubmenu.md#13-ui-层)。
-`ui.Submenu(label, items...)` 尚未实现。MenuButton 的声明式动作在重建后访问
-最新闭包；输入打开错误通过 OnOpenError 反馈，同步 Open 直接返回错误。
+**ui 层**：MenuButton／MenuItem／MenuSeparator 只协调 GUI 模型。通过
+`ui.MenuItem("Recent").Submenu(ui.MenuItem("Open", onOpen))` 声明分支。
+结构不变时递归保留模型和最新回调，输入错误通过 OnOpenError 反馈，同步 Open 返回错误。
 
 MenuButton 分组切换另见 [MenuButton 分组设计](DesignMenuButtonGroup.md)，
 通过局部 MenuButtonGroup 容器自动关联后代菜单按钮，
-允许普通按钮混排；不要求新增 MenuBar 容器，也不以子菜单实现为前置。
+允许普通按钮混排，不以子菜单实现为前置。后续 MenuBar 接收菜单数据，独立管理
+窗口内／系统菜单栏呈现；不将任意 MenuButton.Child 投影为原生菜单内容。
 
 ## 2. MenuModel 复用 ListData
 
@@ -46,25 +44,26 @@ MenuButton 分组切换另见 [MenuButton 分组设计](DesignMenuButtonGroup.md
 按索引取值 + 变更通知 + 内建具体实现（`SliceListModel`）。
 
 公开 `MenuModel` 接口嵌入 `ListData[*MenuItem]`，明确菜单用途但不重复列表协议。`Menu` 内嵌
-`*SliceListModel[*MenuItem]`，免费获得 `ItemsCount/ItemAt/ConnectItems/Append/
-Insert/Remove/Set/Modify` + 并发安全 + 变更通知：
+`*SliceListModel[*MenuItem]`，复用 `ItemsCount/ItemAt/ConnectItems/
+Insert/Remove/Set/Modify` 及变更通知；菜单修改在 GUI 线程进行：
 
 ```go
 type Menu struct{ *SliceListModel[*MenuItem] }
 type MenuModel interface { ListData[*MenuItem] }
 func NewMenu() *Menu
-func (m *Menu) Append(label string, action func()) *MenuItem // 薄糖：构造 item + 塞模型 + 接 onChange
+func (m *Menu) Append(label string, action func()) *MenuItem
 func (m *Menu) AppendSeparator() *MenuItem
+func (m *Menu) AppendSubmenu(label string, submenu MenuModel) *MenuItem
 ```
 
 - **`MenuItem` 是具体结构体，不是接口**（对照 `SliceListModel[int]` 的 `int`）：
-  菜单项是叶子数据记录，不存在第二种条目表示（分隔线是 `separator` 布尔字段），
+  菜单项是数据记录，可以关联 Submenu，不存在第二种条目表示（分隔线是 `separator` 布尔字段），
   接口买不到任何东西。
 - **变更通知的实时价值**：`PopoverMenu` 订阅 `ConnectItems` → 菜单打开期间
   `SetEnabled(false)`/`Append` 能实时重渲染（ListView 的既有机制），而不是打开
   那一刻的冻结快照。
-- `onChanged` 接线：同包访问 `SliceListModel.changed` 信号，`Append` 时
-  `mi.onChanged = m.changed.Emit`，使 `SetEnabled/SetVisible` 也触发模型变更通知。
+- Menu 按实际成员维护条目变更订阅，支持条目借给多个模型，以及 Insert／SetItems／
+  Modify 等入口；移出时解除对应通知。纯 Action 刷新不重建行，来源改变仍通知。
 
 ## 3. 渲染宿主：`PopoverMenu = Popover + ScrollView(ListView)`
 
@@ -107,9 +106,9 @@ PopoverMenu（命令式控件）
 PopoverMenu 在自己的内容树捕获未修改的 ↑↓、Home、End、Enter 和 Space。
 ↑↓ 循环选择可用项，Home/End 到首尾；跳过 nil、隐藏、禁用项与分隔线。
 Enter/Space 先使用当前可用项，没有活动项时选择首项，再复用原有 activate：
-先保存动作、隐藏并释放模态输入，再调用应用动作。当前 Escape 仍由 Window／
-Popover 提前关闭；[子菜单设计 §5](DesignMenuSubmenu.md#5-按键路由与活动层)
-规划改为转交根 Popover、内容优先处理，以支持逐层返回；该调整尚未实施。
+先保存动作、关闭整链并释放模态输入，再核验来源并调用应用动作。
+Escape 先交根菜单的活动层控制器，支持逐层返回；通用 AutoDismiss 仅在内容未处理时
+执行默认关闭。详见 [子菜单的按键路由](DesignMenuSubmenu.md#5-按键路由与活动层)。
 
 活动项以 MenuItem 身份保存，模型更新时重新核验；关闭、卸载和模型替换清空。
 选择后通过 ListView.Reveal 请求可见，滚动仍归 ScrollView。虚拟行 Bind 同步活动状态，
@@ -131,9 +130,9 @@ Snapshot 是该活动项的投影。Selected 到 Hovered 的外观映射保留�
 按压样式仅用于仍为活动项的行，避免按住鼠标时键盘换行留下第二条强调。
 隐藏、卸载、输入重置和模型替换清空活动项；虚拟行解绑只清理其投影，重新 Bind
 从所属 menuContent 读取活动项，不将呈现资源复用解释为新的指针操作。
-上述规则限于当前单层菜单；未来子菜单的父项保留归菜单分支协调，不通过忽略 Leave
-模拟。本轮不改通用 Popover、EventDispatcher、样式公共接口或 DropDown 的实际选择值。
-不夺取主窗口原生焦点，不添加对外导航/执行测试接口，不据此声称已经支持子菜单。
+级联菜单另有 expanded 父项背景和有限移动保护，活动项不承担分支资源所有权；
+离开没有子层的菜单仍清空活动项。子层通过根授权和正常分发路径接收键盘，
+不夺取主窗口原生焦点，也不添加对外导航／执行测试接口。
 
 验证见 [菜单键盘验收](PlanMenuKeyboard.md)。
 
