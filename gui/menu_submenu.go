@@ -32,6 +32,12 @@ func (pm *PopoverMenu) Destroy() {
 	pm.model, pm.content, pm.anchor = nil, nil, nil
 }
 
+const (
+	menuSubmenuOverlap  = 4
+	menuHoverOpenDelay  = 250 * time.Millisecond
+	menuTransitionLimit = 500 * time.Millisecond
+)
+
 func (pm *PopoverMenu) rootMenu() *PopoverMenu {
 	for pm.parent != nil {
 		pm = pm.parent
@@ -67,12 +73,14 @@ func (pm *PopoverMenu) cancelHover() {
 func (pm *PopoverMenu) cancelAncestorHover() {
 	for p := pm; p != nil; p = p.parent {
 		p.cancelHover()
+		p.protectUntil = time.Time{}
 	}
 }
 func (pm *PopoverMenu) closeChild() {
 	pm.cancelHover()
 	child := pm.child
 	pm.expanded, pm.keyboardChild = nil, false
+	pm.protectUntil = time.Time{}
 	if child != nil {
 		child.Hide()
 	}
@@ -190,7 +198,8 @@ func (pm *PopoverMenu) openChild(item *MenuItem, keyboard bool) {
 	// edges: row padding must not accumulate at each cascade level.
 	body := host.bodyRect()
 	origin := absOrigin(row)
-	area := geometry.Rect(body.X-origin.X, -pm.content.padding, body.Width, row.Rect().Height)
+	overlap := min(float32(menuSubmenuOverlap), body.Width/2)
+	area := geometry.Rect(body.X-origin.X+overlap, -pm.content.padding, max(0, body.Width-2*overlap), row.Rect().Height)
 	// The child's own padding is the same menu style and is measured before Show.
 	// Position its first row at the source row's top.
 	if child.popover == nil {
@@ -329,19 +338,7 @@ func (pm *PopoverMenu) filterEvent(e events.Event) bool {
 		}
 	}
 	position := geometry.Point{X: pointer.Position.X + host.requestedPosition.X, Y: pointer.Position.Y + host.requestedPosition.Y}
-	var picked *PopoverMenu
-	for layer := root; layer != nil && layer.Visible(); layer = layer.child {
-		p := layer.nativeHost()
-		if p == nil {
-			break
-		}
-		point := geometry.Point{X: position.X - p.requestedPosition.X, Y: position.Y - p.requestedPosition.Y}
-		_, border, _ := p.surfaceStyle()
-		radius, _ := border.CornerRadius()
-		if roundedBodyContains(p.bodyRect(), radius, point) {
-			picked = layer
-		}
-	}
+	picked := root.layerAt(position)
 	if picked != nil {
 		for p := picked.parent; p != nil; p = p.parent {
 			p.cancelHover()
@@ -369,8 +366,20 @@ func (pm *PopoverMenu) filterEvent(e events.Event) bool {
 		}
 		return true
 	}
+	if pointer.EventType == events.PointerMove {
+		pm.pointerLeave(geometry.Point{X: pointer.Position.X - absOrigin(pm.content).X, Y: pointer.Position.Y - absOrigin(pm.content).Y}, true)
+	}
 	return false
 }
+func (pm *PopoverMenu) returnToParent() {
+	parent := pm.parent
+	item, epoch := parent.expanded, parent.epoch
+	parent.closeChild()
+	if parent.Visible() && parent.epoch == epoch && parent.expanded == nil && parent.contains(item) {
+		parent.content.selectItem(item)
+	}
+}
+
 func (pm *PopoverMenu) keyEvent(ctx EventContext, e events.KeyEvent) bool {
 	if e.Modifiers != 0 && !(e.Key == events.KeyTab && e.Modifiers == events.ModifierShift) {
 		return false
@@ -402,12 +411,12 @@ func (pm *PopoverMenu) keyEvent(ctx EventContext, e events.KeyEvent) bool {
 			return false
 		}
 		if !e.Repeat {
-			pm.parent.closeChild()
+			pm.returnToParent()
 		}
 	case events.KeyEscape:
 		if !e.Repeat {
 			if pm.parent != nil {
-				pm.parent.closeChild()
+				pm.returnToParent()
 			} else {
 				pm.Hide()
 			}
@@ -461,41 +470,156 @@ func (pm *PopoverMenu) seedPointer() {
 	pm.pointerValid = true
 }
 
+// layerAt uses body geometry, including round corners, in native owner DIP.
+// Shadows never keep an unrelated branch active.
+func (pm *PopoverMenu) layerAt(position geometry.Point) *PopoverMenu {
+	var picked *PopoverMenu
+	for layer := pm.rootMenu(); layer != nil && layer.Visible(); layer = layer.child {
+		host := layer.nativeHost()
+		if host == nil {
+			break
+		}
+		point := geometry.Point{X: position.X - host.requestedPosition.X, Y: position.Y - host.requestedPosition.Y}
+		_, border, _ := host.surfaceStyle()
+		radius, _ := border.CornerRadius()
+		if roundedBodyContains(host.bodyRect(), radius, point) {
+			picked = layer
+		}
+	}
+	return picked
+}
+
+func (pm *PopoverMenu) observeOwnerPointer(event events.PointerEvent) {
+	if !pm.Visible() || pm.layerAt(event.Position) != nil {
+		return
+	}
+	for layer := pm; layer != nil && layer.Visible(); layer = layer.child {
+		if host := layer.nativeHost(); host != nil && host.dispatcher.captureTarget != nil {
+			return
+		}
+	}
+	pm.content.selectItem(nil)
+	pm.pointerValid = false
+	epoch := pm.epoch
+	pm.closeChild()
+	if pm.epoch != epoch || pm.expanded != nil {
+		return
+	}
+	if host := pm.nativeHost(); host != nil {
+		local := event
+		local.EventType = events.PointerLeave
+		local.Position = geometry.Point{X: event.Position.X - host.requestedPosition.X, Y: event.Position.Y - host.requestedPosition.Y}
+		_ = host.dispatcher.DispatchEvent(host, local)
+	}
+}
+
+func (pm *PopoverMenu) pointerLeave(position geometry.Point, hasPosition bool) {
+	if !pm.Visible() {
+		return
+	}
+	if pm.expanded == nil {
+		pm.cancelHover()
+	}
+	if !hasPosition {
+		return
+	}
+	host := pm.nativeHost()
+	origin := absOrigin(pm.content)
+	ownerPoint := geometry.Point{X: position.X + origin.X + host.requestedPosition.X, Y: position.Y + origin.Y + host.requestedPosition.Y}
+	root := pm.rootMenu()
+	if root.layerAt(ownerPoint) != nil {
+		return
+	}
+	if pm.expanded != nil && pm.pointerValid && pm.preserveTransition(pm.pointer, position, nil) {
+		return
+	}
+	root.observeOwnerPointer(events.PointerEvent{EventType: events.PointerMove, Position: ownerPoint})
+}
+
 func (pm *PopoverMenu) pointerMotion(position geometry.Point, motion bool) {
 	previous, valid := pm.pointer, pm.pointerValid
 	pm.pointer, pm.pointerValid = position, true
 	pm.content.selectPointer(position)
-	if !motion || valid && previous == position {
+	item := pm.content.active
+	if !motion {
+		pm.cancelAncestorHover()
+		if item != pm.expanded {
+			pm.closeChild()
+		}
+		return
+	}
+	if valid && previous == position {
+		if !pm.protectUntil.IsZero() && pm.expanded != nil {
+			pm.content.selectItem(pm.expanded)
+		}
 		return
 	}
 	for parent := pm.parent; parent != nil; parent = parent.parent {
 		parent.cancelHover()
+		parent.protectUntil = time.Time{}
 		parent.keyboardChild = true
 	}
 	pm.keyboardChild = false
-	item := pm.content.active
 	if item == pm.expanded {
 		pm.cancelHover()
 		pm.protectUntil = time.Time{}
 		return
 	}
-	if item == pm.pending && pm.hoverTimer != nil && pm.hoverTimer.Active() {
+	if pm.expanded != nil {
+		if valid && pm.preserveTransition(previous, position, item) {
+			return
+		}
+		epoch := pm.epoch
+		pm.closeChild()
+		if !pm.Visible() || pm.epoch != epoch || pm.expanded != nil {
+			return
+		}
+		pm.content.selectPointer(position)
+		item = pm.content.active
+	}
+	if item == nil || item.Submenu() == nil || !item.available() {
+		pm.cancelHover()
+		return
+	}
+	pm.scheduleHover(item, menuHoverOpenDelay, false)
+}
+
+func (pm *PopoverMenu) hoverNow() time.Time {
+	if host := pm.nativeHost(); host != nil && host.app != nil && host.app.timers != nil {
+		return host.app.timers.now()
+	}
+	return time.Now()
+}
+func (pm *PopoverMenu) preserveTransition(previous, current geometry.Point, item *MenuItem) bool {
+	if pm.child == nil || !pm.child.Visible() || !pm.movingTowardChild(previous, current) {
+		return false
+	}
+	now := pm.hoverNow()
+	if pm.protectUntil.IsZero() {
+		row := pm.rowFor(pm.expanded)
+		origin := absOrigin(pm.content)
+		if row == nil || !containsPoint(row.windowRect(), geometry.Point{X: previous.X + origin.X, Y: previous.Y + origin.Y}) {
+			return false
+		}
+		pm.protectUntil = now.Add(menuTransitionLimit)
+	}
+	remaining := pm.protectUntil.Sub(now)
+	if remaining <= 0 {
+		return false
+	}
+	pm.content.selectItem(pm.expanded)
+	pm.scheduleHover(item, remaining, true)
+	return true
+}
+
+// Opening waits for intent. Closing is immediate unless a bounded trajectory
+// toward the displayed child is being protected. Changing rows cannot extend
+// that trajectory's original deadline.
+func (pm *PopoverMenu) scheduleHover(item *MenuItem, delay time.Duration, preserving bool) {
+	if pm.pending == item && pm.hoverTimer != nil && pm.hoverTimer.Active() {
 		return
 	}
 	pm.cancelHover()
-	pm.keyboardChild = false
-	if item != nil && item.Submenu() == nil && pm.expanded == nil {
-		return
-	}
-	delay := 250 * time.Millisecond
-	if valid && pm.child != nil && pm.child.Visible() && pm.movingTowardChild(previous, position) {
-		if pm.protectUntil.IsZero() {
-			pm.protectUntil = time.Now().Add(500 * time.Millisecond)
-		}
-		if remaining := time.Until(pm.protectUntil); remaining > 0 {
-			delay = remaining
-		}
-	}
 	host := pm.nativeHost()
 	if host == nil || host.app == nil {
 		return
@@ -510,10 +634,16 @@ func (pm *PopoverMenu) pointerMotion(position geometry.Point, motion bool) {
 			return
 		}
 		pm.cancelHover()
+		if preserving {
+			pm.closeChild()
+			if !pm.Visible() || pm.epoch != occurrence || pm.expanded != nil {
+				return
+			}
+			pm.content.selectPointer(pm.pointer)
+			item = pm.content.active
+		}
 		if item != nil && item.Submenu() != nil {
 			pm.openChild(item, false)
-		} else {
-			pm.closeChild()
 		}
 	})
 	pm.report(pm.hoverTimer.StartOnce(delay))

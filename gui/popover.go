@@ -160,7 +160,8 @@ type popover struct {
 	visible                   bool
 	modal                     bool
 	filterEvent               func(events.Event) bool
-	autoDismiss               bool // requests closing independently of modal input ownership
+	ownerPointer              func(events.PointerEvent) // optional owner-local pointer observation
+	autoDismiss               bool                      // requests closing independently of modal input ownership
 
 	dismissRequest signal.Signal0
 	closed         signal.Signal0

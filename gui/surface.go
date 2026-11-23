@@ -535,9 +535,13 @@ func (w *surfaceBase) DispatchEvent(event events.Event) error {
 	}
 	switch e := event.(type) {
 	case events.PointerEvent:
+		moved := !w.cursorInside || w.cursorPosition != e.Position
 		w.cursorPosition = e.Position
 		w.cursorInside = e.EventType != events.PointerLeave && containsPoint(geometry.Rect(0, 0, w.width, w.height), e.Position)
 		defer w.applyCursor()
+		if moved && (e.EventType == events.PointerMove || e.EventType == events.PointerEnter) && w.observePopoverPointer(e) {
+			return nil
+		}
 	case events.FocusEvent:
 		if !e.Focused {
 			w.cursorInside = false
@@ -697,6 +701,23 @@ func (w *surfaceBase) SetModalTarget(target ModalTarget) {
 	}
 	w.imSetEnabled(w.activeIM != nil)
 	w.applyCursor()
+}
+
+// Visible popovers may coordinate their descendants with pointer facts from
+// the native owner. This observation does not redirect or consume owner input;
+// only callbacks that replace its input context stop the original event.
+func (w *surfaceBase) observePopoverPointer(event events.PointerEvent) bool {
+	root, modal, shown := w.Widget(), w.modalTarget, w.popoversShown
+	for _, p := range slices.Clone(w.popovers) {
+		if !p.Visible() || p.owner != w.owner() || p.ownerPointer == nil || modal != nil && modal != p || !modalWidgetAllowed(p.anchor) {
+			continue
+		}
+		p.ownerPointer(event)
+		if w.destroyed || w.Widget() != root || w.modalTarget != modal || w.popoversShown != shown {
+			return true
+		}
+	}
+	return false
 }
 
 // dismissPopovers observes the existing surface list without owning resources
