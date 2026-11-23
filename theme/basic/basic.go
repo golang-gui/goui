@@ -190,6 +190,8 @@ func coreRules() []style.Rule {
 			Radius(4),
 		style.Name(styleNameMenuItem).
 			BackgroundColor(color.Transparent),
+		style.Name(styleNameMenuItem).Part("submenu").ForegroundColor(color.Black),
+		style.Name(styleNameMenuItem).Part("submenu").State(style.Disabled).ForegroundColor(color.RGBA{R: 160, G: 160, B: 160, A: 255}),
 		style.Name(styleNameMenuItem).Part("indicator").ForegroundColor(color.Black),
 		style.Name(styleNameMenuItem).Part("indicator").State(style.Disabled).
 			ForegroundColor(color.RGBA{R: 160, G: 160, B: 160, A: 255}),

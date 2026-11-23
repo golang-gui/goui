@@ -2,6 +2,8 @@ package gui
 
 import (
 	"errors"
+	"time"
+
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
@@ -21,7 +23,8 @@ type MenuItem struct {
 	visible   bool
 	separator bool
 	revision  uint64
-	onChanged func() // wired by Menu.Append; fires when presentation changes
+	changed   signal.Signal0
+	submenu   MenuModel
 }
 
 func NewMenuItem(label string, action func()) *MenuItem {
@@ -41,32 +44,29 @@ func (mi *MenuItem) SetLabel(label string) {
 		return
 	}
 	mi.label = label
-	if mi.onChanged != nil {
-		mi.onChanged()
-	}
+	mi.changed.Emit()
 }
 
-// Command returns the shared operation, or nil for a direct callback.
+// Command returns the shared operation, or nil when no command is selected.
 func (mi *MenuItem) Command() *Command { return mi.command }
 
-// SetCommand selects a shared operation and replaces the direct callback.
+// SetCommand selects a shared operation and replaces the action or submenu.
 func (mi *MenuItem) SetCommand(command *Command) {
-	if mi.command == command && mi.action == nil {
+	if mi.command == command && mi.action == nil && mi.submenu == nil {
 		return
 	}
-	mi.command, mi.action = command, nil
+	mi.command, mi.action, mi.submenu = command, nil, nil
 	mi.revision++
-	if mi.onChanged != nil {
-		mi.onChanged()
-	}
+	mi.changed.Emit()
 }
 
-// SetAction selects a direct callback and replaces the shared operation.
+// SetAction selects a direct callback and replaces the command or submenu.
 func (mi *MenuItem) SetAction(action func()) {
-	mi.command, mi.action = nil, action
+	displayChanged := mi.command != nil || mi.submenu != nil
+	mi.command, mi.action, mi.submenu = nil, action, nil
 	mi.revision++
-	if mi.onChanged != nil {
-		mi.onChanged()
+	if displayChanged {
+		mi.changed.Emit()
 	}
 }
 
@@ -80,9 +80,7 @@ func (mi *MenuItem) SetEnabled(v bool) {
 	}
 	mi.enabled = v
 	mi.revision++
-	if mi.onChanged != nil {
-		mi.onChanged()
-	}
+	mi.changed.Emit()
 }
 
 func (mi *MenuItem) SetVisible(v bool) {
@@ -91,20 +89,21 @@ func (mi *MenuItem) SetVisible(v bool) {
 	}
 	mi.visible = v
 	mi.revision++
-	if mi.onChanged != nil {
-		mi.onChanged()
-	}
+	mi.changed.Emit()
 }
 
-// Menu is a model (a specialized list). It reuses SliceListModel with all its
-// concurrency guarantees and — crucially — its change notification, so a
-// PopoverMenu can render live updates while open (via ListView's reloading).
+// Menu is a model backed by SliceListModel and its change notifications.
+// Menu and MenuItem mutations belong to the GUI thread, where their observers
+// update open presenters synchronously.
 type Menu struct {
 	*SliceListModel[*MenuItem]
+	itemHandles map[*MenuItem]signal.Handle
 }
 
 func NewMenu() *Menu {
-	return &Menu{SliceListModel: NewSliceListModel[*MenuItem](nil)}
+	m := &Menu{SliceListModel: NewSliceListModel[*MenuItem](nil), itemHandles: make(map[*MenuItem]signal.Handle)}
+	m.SliceListModel.ConnectItems(m.syncItems)
+	return m
 }
 
 func (m *Menu) Append(label string, action func()) *MenuItem {
@@ -119,13 +118,47 @@ func (m *Menu) AppendSeparator() *MenuItem {
 	return mi
 }
 
-func (m *Menu) appendItem(mi *MenuItem) {
-	mi.onChanged = func() {
-		// Item properties can change visibility and size. Keep full-menu
-		// invalidation instead of treating them as index-preserving updates.
-		m.Modify(func(items []*MenuItem) []*MenuItem { return items })
+// Submenu returns the child model, or nil for a leaf.
+func (mi *MenuItem) Submenu() MenuModel { return mi.submenu }
+
+// SetSubmenu replaces the action or command. nil selects an inactive leaf.
+// Models are borrowed and may be shared between independent presenters.
+func (mi *MenuItem) SetSubmenu(model MenuModel) {
+	mi.submenu, mi.action, mi.command = model, nil, nil
+	mi.revision++
+	mi.changed.Emit()
+}
+
+// AppendSubmenu appends an entry that expands a borrowed child model.
+func (m *Menu) AppendSubmenu(label string, submenu MenuModel) *MenuItem {
+	item := NewMenuItem(label, nil)
+	item.submenu = submenu
+	m.appendItem(item)
+	return item
+}
+
+func (m *Menu) appendItem(mi *MenuItem) { m.SliceListModel.Append(mi) }
+
+// Track membership, including mutations through the embedded list API. An
+// entry may occur in several menus without stealing another menu's observer.
+func (m *Menu) syncItems() {
+	wanted := make(map[*MenuItem]bool)
+	for i := 0; i < m.ItemsCount(); i++ {
+		if item := m.ItemAt(i); item != nil {
+			wanted[item] = true
+		}
 	}
-	m.SliceListModel.Append(mi)
+	for item, h := range m.itemHandles {
+		if !wanted[item] {
+			h.Disconnect()
+			delete(m.itemHandles, item)
+		}
+	}
+	for item := range wanted {
+		if m.itemHandles[item] == nil {
+			m.itemHandles[item] = item.changed.Connect(func() { m.Modify(func(items []*MenuItem) []*MenuItem { return items }) })
+		}
+	}
 }
 
 // --- PopoverMenu: a Popover that renders a ListData[*MenuItem] ---
@@ -136,13 +169,28 @@ func (m *Menu) appendItem(mi *MenuItem) {
 // expands it, and the available work area remains a hard size limit.
 // Renderer internals (menuContent/ScrollView/ListView) are not public.
 type PopoverMenu struct {
-	anchor    Widget
-	popover   SharedPopover
-	model     ListData[*MenuItem]
-	content   *menuContent
-	closed    signal.Signal0
-	maxHeight float32
-	modal     bool
+	anchor        Widget
+	popover       SharedPopover
+	model         ListData[*MenuItem]
+	content       *menuContent
+	closed        signal.Signal0
+	maxHeight     float32
+	modal         bool
+	parent        *PopoverMenu
+	child         *PopoverMenu
+	expanded      *MenuItem
+	keyboardChild bool
+	destroyed     bool
+	epoch         uint64
+	errors        signal.Signal1[error]
+	hoverTimer    *Timer
+	hoverHandle   signal.Handle
+	hoverEpoch    uint64
+	pending       *MenuItem
+	pointer       geometry.Point
+	pointerValid  bool
+	protectUntil  time.Time
+	modelHandles  signal.Handles
 }
 
 const menuScrollbarGap = 6
@@ -166,6 +214,8 @@ func (pm *PopoverMenu) SetModal(modal bool) {
 // SetMenu installs the model and refreshes the content, including when the same
 // instance is supplied. Model implementations need not be comparable.
 func (pm *PopoverMenu) SetMenu(m MenuModel) {
+	pm.epoch++
+	pm.closeChild()
 	pm.model = m
 	if pm.content != nil {
 		pm.content.SetModel(m)
@@ -200,45 +250,69 @@ func (pm *PopoverMenu) ShowAt(pos geometry.Point) error {
 }
 
 func (pm *PopoverMenu) show(placement PopoverPlacement, pos geometry.Point) error {
+	if pm.destroyed {
+		return errors.New("menu: destroyed")
+	}
 	if pm.model == nil {
 		return nil
 	}
 	if pm.content == nil {
 		pm.content = newMenuContent(pm.model, pm.maxHeight, pm.activate)
+		pm.content.presenter = pm
 	}
+	pm.ensurePopover()
+	pm.content.connectModel()
+	pm.popover.SetPosition(pos)
+	pm.popover.SetPlacement(placement)
+	pm.epoch++
+	content, popup, epoch := pm.content, pm.popover, pm.epoch
+	content.observeCommands(true)
+	pm.observeModels()
+	if pm.destroyed || pm.epoch != epoch {
+		if !pm.Visible() {
+			pm.endOccurrence()
+		}
+		return ErrPopoverSuperseded
+	}
+	if err := popup.Show(); err != nil {
+		if !pm.Visible() {
+			pm.endOccurrence()
+		}
+		if pm.destroyed || pm.epoch != epoch || errors.Is(err, ErrPopoverSuperseded) {
+			return ErrPopoverSuperseded
+		}
+		popup.Hide()
+		return err
+	}
+	if pm.destroyed || pm.epoch != epoch {
+		return ErrPopoverSuperseded
+	}
+	pm.seedPointer()
+	return nil
+}
+
+func (pm *PopoverMenu) ensurePopover() {
 	if pm.popover == nil {
 		p := NewSharedPopover(pm.anchor)
 		p.SetStyleName(styleNameMenu)
 		p.SetModal(pm.modal)
-		p.SetAutoDismiss(true)
+		p.SetAutoDismiss(pm.parent == nil)
+		p.(*sharedPopover).filterEvent = pm.filterEvent
 		p.ConnectDismissRequest(pm.Hide)
 		p.ConnectClosed(func() {
 			if pm.content != nil && pm.popover == p && !p.Visible() {
-				pm.content.observeCommands(false)
+				pm.endOccurrence()
 			}
 			pm.closed.Emit()
 		})
 		pm.popover = p
 		p.SetWidget(pm.content)
 	}
-	pm.popover.SetPosition(pos)
-	pm.popover.SetPlacement(placement)
-	pm.content.observeCommands(true)
-	if err := pm.popover.Show(); err != nil {
-		if errors.Is(err, ErrPopoverSuperseded) {
-			if !pm.Visible() {
-				pm.content.observeCommands(false)
-			}
-			return err
-		}
-		pm.content.observeCommands(false)
-		pm.popover.Hide()
-		return err
-	}
-	return nil
 }
 
 func (pm *PopoverMenu) Hide() {
+	pm.epoch++
+	pm.endOccurrence()
 	if pm.content != nil {
 		pm.content.observeCommands(false)
 		pm.content.selectItem(nil)
@@ -269,9 +343,14 @@ func (pm *PopoverMenu) contains(mi *MenuItem) bool {
 }
 
 func (pm *PopoverMenu) activate(mi *MenuItem) {
-	if mi == nil || !mi.available() || !mi.Visible() || mi.Separator() || !pm.contains(mi) {
+	if pm.destroyed || mi == nil || !pm.ancestorsAvailable() || !mi.available() || !mi.Visible() || mi.Separator() || !pm.contains(mi) {
 		return
 	}
+	if mi.Submenu() != nil {
+		pm.openChild(mi, false)
+		return
+	}
+	root := pm.rootMenu()
 	// Release modal input before invoking user code. A close callback can replace
 	// or disable the operation; never dispatch the old click to a new target.
 	action, command, revision := mi.Action(), mi.Command(), mi.revision
@@ -283,12 +362,28 @@ func (pm *PopoverMenu) activate(mi *MenuItem) {
 	if surface, ok := anchorSurface(pm.anchor); ok {
 		owner = surfaceCore(surface)
 	}
-	pm.Hide()
-	if owner != nil && owner.destroyed || pm.anchor != nil && pm.anchor.base().destroyed {
+	type ancestorSource struct {
+		menu     *PopoverMenu
+		item     *MenuItem
+		revision uint64
+	}
+	var ancestors []ancestorSource
+	for p := pm; p.parent != nil; p = p.parent {
+		item := p.parent.expanded
+		ancestors = append(ancestors, ancestorSource{p.parent, item, item.revision})
+	}
+	closedEpoch := root.epoch + 1
+	root.Hide()
+	if owner != nil && owner.destroyed || root.destroyed || root.anchor != nil && root.anchor.base().destroyed {
 		return
 	}
-	if !mi.available() || !mi.Visible() || mi.Command() != command || mi.revision != revision || pm.Visible() || !pm.contains(mi) {
+	if !mi.available() || !mi.Visible() || mi.Command() != command || mi.revision != revision || root.Visible() || root.epoch != closedEpoch || !pm.contains(mi) {
 		return
+	}
+	for _, source := range ancestors {
+		if source.item.revision != source.revision || !source.menu.contains(source.item) || !source.item.available() || !source.item.Visible() {
+			return
+		}
 	}
 	if command != nil {
 		if command.revision != commandRevision {
@@ -321,6 +416,7 @@ type menuContent struct {
 	padding   float32
 	active    *MenuItem
 	columns   menuColumns
+	presenter *PopoverMenu
 	observing bool
 	commands  map[*Command]signal.Handles
 }
@@ -340,6 +436,9 @@ func newMenuContent(m MenuModel, maxHeight float32, activate func(*MenuItem)) *m
 	key := NewKeyEventController()
 	key.SetPhase(PhaseCapture)
 	key.ConnectKeyDown(func(ctx EventContext, event events.KeyEvent) {
+		if mc.presenter != nil && mc.presenter.keyEvent(ctx, event) {
+			return
+		}
 		if event.Modifiers != 0 {
 			return
 		}
@@ -354,6 +453,11 @@ func newMenuContent(m MenuModel, maxHeight float32, activate func(*MenuItem)) *m
 		case events.KeyEnd:
 			direction, edge = -1, true
 		case events.KeyEnter, events.KeySpace:
+			if event.Repeat {
+				event.PreventDefault()
+				ctx.StopPropagation()
+				return
+			}
 			if mc.activeIndex() < 0 {
 				mc.moveItem(1, true)
 			}
@@ -389,7 +493,11 @@ func (c *menuPointerController) HandleEvent(ctx EventContext) {
 		return
 	}
 	if position, ok := ctx.Position(); ok {
-		c.content.selectPointer(position)
+		if c.content.presenter != nil {
+			c.content.presenter.pointerMotion(position, event.EventType == events.PointerMove)
+		} else {
+			c.content.selectPointer(position)
+		}
 	}
 }
 
@@ -398,10 +506,21 @@ func (c *menuPointerController) HandleCrossing(ctx CrossingContext) {
 		return
 	}
 	if ctx.Direction() == CrossingLeave {
-		c.content.selectItem(nil)
+		if c.content.presenter == nil || c.content.presenter.expanded == nil {
+			if c.content.presenter != nil {
+				c.content.presenter.cancelHover()
+			}
+			c.content.selectItem(nil)
+		}
 	} else if position, ok := ctx.Position(); ok {
 		// Native Enter delivers crossing without an ordinary pointer move.
 		c.content.selectPointer(position)
+		if pm := c.content.presenter; pm != nil {
+			pm.cancelAncestorHover()
+			if host := pm.nativeHost(); host != nil && !host.showing {
+				pm.pointerMotion(position, true)
+			}
+		}
 	}
 }
 
@@ -472,7 +591,12 @@ func (mc *menuContent) connectModel() {
 		return
 	}
 	mc.list.SetModel(mc.model)
-	mc.hChanged = mc.model.ConnectItems(mc.invalidate)
+	mc.hChanged = mc.model.ConnectItems(func() {
+		if mc.presenter != nil {
+			mc.presenter.modelInvalidated()
+		}
+		mc.invalidate()
+	})
 	mc.invalidate()
 }
 
@@ -590,7 +714,7 @@ func (mc *menuContent) SetModel(m ListData[*MenuItem]) {
 	mc.disconnectModel()
 	mc.model = m
 	mc.delegate.model = m
-	if mc.Root() != nil {
+	if mc.Root() != nil && (mc.presenter == nil || mc.presenter.Visible()) {
 		mc.connectModel()
 	}
 	mc.observeCommands(observing)
@@ -643,13 +767,13 @@ func (mc *menuContent) Measure(c layout.Constraint) layout.Measurement {
 	return layout.Measured(mc.constrain(c, geometry.Size{Width: w, Height: h}))
 }
 
-type menuColumns struct{ title, shortcut, indicator float32 }
+type menuColumns struct{ title, shortcut, indicator, submenu float32 }
 
 func (c menuColumns) width() float32 {
 	if c.shortcut > 0 {
-		return c.indicator + c.title + menuShortcutGap + c.shortcut
+		return c.indicator + c.title + menuShortcutGap + c.shortcut + c.submenu
 	}
-	return c.indicator + c.title
+	return c.indicator + c.title + c.submenu
 }
 
 func (mc *menuContent) measureNatural() {
@@ -667,6 +791,9 @@ func (mc *menuContent) measureNatural() {
 				if row.mi.Separator() {
 					h += menuSeparatorHeight
 				} else {
+					if row.mi.Submenu() != nil {
+						columns.submenu = menuIndicatorSize + menuIndicatorGap
+					}
 					if row.checkable() {
 						columns.indicator = menuIndicatorSize + menuIndicatorGap
 					}
@@ -725,6 +852,9 @@ func (mc *menuContent) Arrange(rect geometry.Rectangle) {
 	}
 	measureWidget(mc.sv, layout.Tight(inner.Size))
 	mc.sv.Arrange(inner)
+	if mc.presenter != nil {
+		mc.presenter.checkChildAnchor()
+	}
 }
 
 func (mc *menuContent) Snapshot() WidgetInfo {
@@ -758,6 +888,7 @@ func (d *menuItemDelegate) Bind(i int, w Widget) {
 		mi = d.model.ItemAt(i)
 	}
 	row.bind(mi)
+	row.presenter = d.content.presenter
 	row.SetState(style.Selected, mi != nil && mi == d.content.active && mi.available() && mi.Visible() && !mi.Separator())
 }
 
@@ -775,6 +906,7 @@ type menuItemRow struct {
 	mi                  *MenuItem
 	activate            func(*MenuItem)
 	click               *ClickEventController
+	presenter           *PopoverMenu
 }
 
 const (
@@ -894,7 +1026,7 @@ func (r *menuItemRow) Measure(c layout.Constraint) layout.Measurement {
 		return layout.Measured(r.constrain(c, geometry.Size{Height: menuSeparatorHeight}))
 	}
 	title, hint := r.textMeasurements()
-	columns := menuColumns{title: title.Width, shortcut: hint.Width, indicator: r.indicatorWidth()}
+	columns := menuColumns{title: title.Width, shortcut: hint.Width, indicator: r.indicatorWidth(), submenu: r.submenuWidth()}
 	if r.columns != nil {
 		columns.title = max(columns.title, r.columns.title)
 		columns.shortcut = max(columns.shortcut, r.columns.shortcut)
@@ -914,7 +1046,7 @@ func (r *menuItemRow) Arrange(rect geometry.Rectangle) {
 	if r.columns != nil {
 		hintWidth = max(hintWidth, r.columns.shortcut)
 	}
-	width := max(0, rect.Width-2*menuItemPadding)
+	width := max(0, rect.Width-2*menuItemPadding-r.submenuWidth())
 	leading := min(width, r.indicatorWidth())
 	width -= leading
 	hintWidth = min(width, hintWidth)
@@ -956,6 +1088,13 @@ func (r *menuItemRow) Paint(p Painter) {
 		return
 	}
 	PaintStyledBox(p, rect, r.resolvedStyle())
+	if r.mi != nil && r.mi.Submenu() != nil {
+		s := ResolveWidgetStyle(r, styleNameMenuItem, "submenu", r.presentationState())
+		if fg, ok := s.ForegroundColor(); ok && fg != nil {
+			x, y := rect.Width-menuItemPadding-menuIndicatorSize/2, rect.Height/2
+			p.DrawPath(graphics.MoveTo(x-2, y-4).LineTo(x+2, y).LineTo(x-2, y+4), 1.5, graphics.ColorOf(fg))
+		}
+	}
 	if r.checkable() {
 		size := min(float32(menuIndicatorSize), max(0, rect.Width-2*menuItemPadding), rect.Height)
 		indicator := geometry.Rect(menuItemPadding, (rect.Height-size)/2, size, size)
@@ -989,16 +1128,18 @@ func (r *menuItemRow) Snapshot() WidgetInfo {
 	info.Selected = r.State().Has(style.Selected)
 	info.Hovered = r.State().Has(style.Hovered)
 	info.Pressed = r.State().Has(style.Pressed)
-	info.Enabled = info.Enabled && r.mi != nil && r.mi.available()
+	info.Enabled = info.Enabled && r.mi != nil && r.mi.available() && (r.presenter == nil || r.presenter.ancestorsAvailable())
 	if r.mi != nil {
 		info.Text = r.label.PlainText()
+		data := MenuItemInfo{HasSubmenu: r.mi.Submenu() != nil, Expanded: r.presenter != nil && r.presenter.expanded == r.mi && r.presenter.child != nil && r.presenter.child.Visible()}
 		if r.mi.command != nil {
 			checkable := r.checkable()
-			info.SetAttribute(MenuItemInfoKey, MenuItemInfo{Shortcut: r.mi.command.shortcutText(), Checkable: checkable, Checked: checkable && r.mi.command.Checked()})
+			data.Shortcut, data.Checkable, data.Checked = r.mi.command.shortcutText(), checkable, checkable && r.mi.command.Checked()
 			if checkable {
 				info.Role = RoleMenuItemCheckbox
 			}
 		}
+		info.SetAttribute(MenuItemInfoKey, data)
 		if r.mi.Separator() {
 			info.Role = RoleMenuSeparator
 		} else if info.Enabled {
@@ -1024,7 +1165,7 @@ func (r *menuItemRow) State() style.State {
 
 func (r *menuItemRow) presentationState() style.State {
 	st := r.State() &^ (style.Hovered | style.Pressed)
-	if st.Has(style.Selected) {
+	if st.Has(style.Selected) || r.presenter != nil && r.presenter.expanded == r.mi {
 		st |= style.Hovered
 		if r.State().Has(style.Pressed) {
 			st |= style.Pressed
@@ -1047,7 +1188,9 @@ const MenuItemInfoKey = "goui.menu-item"
 // MenuItemInfo describes shared operation state and a configured shortcut hint,
 // not current key reachability. Checked is meaningful only when Checkable is true.
 type MenuItemInfo struct {
-	Shortcut  string `json:"shortcut,omitempty"`
-	Checkable bool   `json:"checkable,omitempty"`
-	Checked   bool   `json:"checked,omitempty"`
+	HasSubmenu bool   `json:"hasSubmenu,omitempty"`
+	Expanded   bool   `json:"expanded,omitempty"`
+	Shortcut   string `json:"shortcut,omitempty"`
+	Checkable  bool   `json:"checkable,omitempty"`
+	Checked    bool   `json:"checked,omitempty"`
 }
