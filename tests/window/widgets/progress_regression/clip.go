@@ -25,12 +25,13 @@ import (
 // 完整圆环并保留窗口；按48/64 DIP、0/.25/.5相位、255/128透明度顺序每行排列四个。
 // 可截图检查顶部／左侧圆弧与滚动视口；关闭退出。副作用仅本例窗口和日志，不改系统设置。
 // -case=arc复用场景，改为7个旋转角度的四分之一圆弧叠加轨道。
-// 每个相交像素按64x64独立面积预期检查预乘RGBA，不只检查四个轴向位置。
+// Software/OpenGL 每个相交像素按64x64独立面积预期检查预乘RGBA。
+// Direct2D 改用独立原生 WARP 指令逐像素对照，保留2级颜色量化预算，
+// 不要求其默认曲线覆盖达到额外的数学面积目标；普通clip／边框断言不变。
 // 覆盖0/22.5/45/73/135/223/315度，1/1.25/1.5/2x、亮暗轨道、128/255前景alpha。
 // 旋转使用普通Painter变换，保持结构clip；-hold最终保留73度圆弧供桌面检查。
-// 此模式的质量预算已在Linux OpenGL／Software和Windows Direct2D通过；
-// Direct2D曲线精度契约见doc/DesignGraphicsColor.md，失败正常报告，不放宽断言。
-// arc-motion遍历整周并在44..46、72..74度逐.25度采样，保留原圆面积断言。
+// Direct2D原生曲线契约见doc/DesignGraphicsColor.md；失败正常报告，不跳过检查。
+// arc-motion遍历整周并在44..46、72..74度逐.25度采样，沿用上述各后端参考。
 // coverage额外绘制三个半透明凹多边形，要求原始浮点轮廓的矩形像素面积积分，
 // 容差2级；相邻直边样本的差值误差不超过两次量化容差之和4级。
 // 此专项验证OpenGL的新覆盖率算法；Software的26.6及扫描转换精度使用arc-motion
@@ -101,6 +102,8 @@ func runClip(chrome gui.WindowChromeMode, hold, arcs, motion, coverage bool) {
 			native, err := p.NewImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
 			must(err)
 			fmt.Printf("CLIP BACKEND %T scale=%g\n", native, p.PixelScale())
+			// 沿用实际资源探针确认后端，不能把环境变量当作未回退的证据。
+			scene.nativeD2D = fmt.Sprintf("%T", native) == "*direct2d.imageResource"
 			native.Destroy()
 		}
 	})
@@ -170,6 +173,7 @@ type clipScene struct {
 	rings                  []clipRing
 	scale                  float32
 	arcs, dark             bool
+	nativeD2D              bool
 	angle                  float64
 	revision, arranged     int
 	probes                 []*clipProbe
@@ -178,6 +182,10 @@ type clipScene struct {
 	edges                  []*clipEdge
 	edgeError, motionError float64
 }
+
+// Windows 入口提供直接原生参考；其他后端继续使用独立数学参考。
+// 仅安装函数，不在包初始化时创建原生对象或连接桌面。
+var nativeArcReference func(*clipScene, image.Rectangle) image.Image
 
 func newClipScene(arcs, coverage bool) *clipScene {
 	s := &clipScene{scale: 1, arranged: -1, arcs: arcs}
@@ -407,12 +415,30 @@ func qualityRingPath(outer, inner float32, full bool) graphics.Path {
 func (s *clipScene) checkArcs(img image.Image) float64 {
 	track := s.trackColor()
 	maxError := float64(0)
+	var native image.Image
+	if s.nativeD2D {
+		if nativeArcReference == nil {
+			panic("Direct2D 原生参考未安装")
+		}
+		native = nativeArcReference(s, img.Bounds())
+	}
 	for _, ring := range s.rings {
 		r := ring.widget.Rect().Scale(s.scale)
 		cx, cy, outer := float64(r.X+r.Width/2), float64(r.Y+r.Height/2), float64(r.Width/2)
 		bounds := pixelEnvelope(r.Inset(-1), 1)
 		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				if native != nil {
+					got, want := rgbaAt(img, x, y), rgbaAt(native, x, y)
+					for i, value := range [4]uint8{got.R, got.G, got.B, got.A} {
+						err := math.Abs(float64(value) - float64([4]uint8{want.R, want.G, want.B, want.A}[i]))
+						maxError = max(maxError, err)
+						if err > 2 {
+							panic(fmt.Sprintf("原生圆弧 size=%g phase=%g alpha=%d scale=%g angle=%g (%d,%d)=%v native=%v", ring.size, ring.phase, ring.alpha, s.scale, s.angle, x, y, got, want))
+						}
+					}
+					continue
+				}
 				t, f := arcPixelAreas(image.Pt(x, y), cx, cy, outer, outer-float64(4*s.scale), s.angle*math.Pi/180)
 				f *= float64(ring.alpha) / 255
 				want := [4]float64{69*f + float64(track.R)*t*(1-f), 128*f + float64(track.G)*t*(1-f), 217*f + float64(track.B)*t*(1-f), 255 * (f + t*(1-f))}

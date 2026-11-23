@@ -7188,8 +7188,8 @@ error，原样全仓命令报编译失败；恢复其既有尽力而为调用后
 - [x] ApiBox实际入口亮暗动画及三态尺寸复核通过。固定73度的最大RGB误差
   22.76→10.99；CPU细分成本、顶点数和整窗离屏创建／绘制／读回的受控对照
   见 [PlanFractionalClipping](PlanFractionalClipping.md)，不外推为屏幕帧性能。
-- [ ] Windows 10 x64 / Direct2D / 1x 新圆弧预算的首阶段失败，旧v0.0.14
-  对照给出完全相同像素，确认为既有独立差异；保留断言，后续单独分析。
+- [x] Windows Direct2D 的圆弧差异已按原生契约复核，改为独立原生指令对照，
+  不再将正常原生覆盖差异作为数学面积预算缺陷；见下文 Direct2D 原生曲线绘制。
   Windows OpenGL、macOS和移动端原生窗口验收缺口仍保留。
 
 ### 圆弧视觉质量复核
@@ -7245,25 +7245,6 @@ error，原样全仓命令报编译失败；恢复其既有尽力而为调用后
 - [x] Windows amd64／macOS arm64受影响包与窗口入口交叉编译通过；本轮未执行
   两者原生窗口验收，改动不涉及平台层或绘制后端。
 
-## Direct2D 曲线精度（2026-11-22）
-
-- [x] Windows 10 / Direct2D / 1x 复现原生椭圆、圆角矩形和等价曲线路径的覆盖不足。
-  默认 AA 已开启，相关实现与 v0.8.1 一致，不认定为新引入回退。采用物理像素及
-  变换感知的原生 Geometry.Simplify；椭圆／圆角矩形缓存限制为 64 项，随 Painter
-  销毁释放，软阴影缓存包含精度。契约、原生依据和成本见 [DesignGraphicsColor](DesignGraphicsColor.md#direct2d-曲线精度)。
-- [x] 原实现的独立圆面积回归失败；1/64 物理像素原型仍在旋转收尖和 1.5x 圆环失败。
-  1/256 最终实现通过，保留原窗口像素预算；增加圆／圆环／描边、旋转／非均匀缩放、
-  1/1.25/1.5/2x、半透明和缓存精度／淘汰／销毁回归。
-- [x] Windows 10 x64 / WARP：Direct2D 整包 137 项测试／子测试通过，零失败、跳过。
-  真实 Direct2D 1x 窗口：graphics/corner_radius 的曲线／尖端／阴影断言及
-  progress_regression 的 56 组圆弧阶段通过；Switch 96 组覆盖／状态断言通过。
-  本机 Linux X11 / Xfwm4 / Software 与 Mesa llvmpipe OpenGL 的对应图形、Switch
-  及各 56 组圆弧阶段通过。
-- [x] 受控四轮离屏对照中，缓存图元的 Go 分配量不增加，自由曲线路径的完整离屏
-  开销中位数约 762→1092 µs／32 图元；不将此结果外推为桌面帧率。
-- [ ] 本轮不覆盖 Windows OpenGL、macOS 原生、硬件 GPU、真实混合 DPI 或移动端；
-  应用逻辑倍率和 WARP 离屏结果不代替这些环境的验收。
-
 ## 样式盒形外框对齐（2026-11-22）
 
 - [x] GUI 统一三个 PaintStyled helper 的外框对齐，包含混合圆角及选边；保留
@@ -7284,30 +7265,36 @@ error，原样全仓命令报编译失败；恢复其既有尽力而为调用后
   图形尖端／阴影、Switch 与圆弧窗口的 OpenGL 回归通过，见前节。
 - [ ] macOS 原生、Windows OpenGL、硬件 GPU、真实混合 DPI 与移动端未执行。
 
-## Direct2D 局部曲线覆盖（2026-11-23）
+## Direct2D 原生曲线绘制（2026-11-23）
 
-- [x] 重新以 Demo 的混合圆角和选边为验收目标，确认首轮 1/256 细分仍有约
-  24/255、16/255 的局部覆盖误差；面积通过不代表视觉达标。新回归在未修改基线
-  上失败，保留原圆面积／尖端断言，新增实际 Bézier 的独立逐像素积分：最大
-  通道差不超过 6/255、平均边缘差不超过 2/255，覆盖 1/1.25/1.5/2x、两种相位、
-  亮暗底色及半透明。参考与契约见 [DesignGraphicsColor](DesignGraphicsColor.md#设备像素覆盖遮罩2026-11-23)。
-- [x] 原生设备空间的 8×8 覆盖遮罩、三次 2:1 平均缩小及单次画刷合成；按块复用
-  临时目标并限制遮罩缓存项数／字节数。曲线路径缓存不可变指令键，保留引用归属；
-  擦除使用 destination-out。新增渐变坐标／分块／绘图状态、整数平移复用、
-  小数相位、路径数据改变、两种容量淘汰及设备释放回归。
-- [x] `go test ./... -count=1 -json`：6341 项通过，零失败、跳过。Software／gui
-  无显示 race、Windows Direct2D／SDK vet 通过；Windows amd64／macOS arm64 的
-  platform／gui／ui／widgets／example 目标构建通过。
-- [x] Windows 10 x64 / WARP 的最终 Direct2D 包 140 项测试／子测试全部通过；
-  Direct2D 1x 原生窗口的 GUI 圆角／Popover、Switch 96 组和圆弧 56 阶段通过。
-  最终 Demo 的亮暗大圆角、选边收尖和滚动后边缘完成真实操作复核。
-- [x] 相同环境、目标和 32 图元的四轮离屏对照：缓存命中保持原耗时量级；
-  每帧改变全部椭圆几何和相位的中位数约 1.0→6.1 ms。明确记录动态未命中的
-  采样成本和暂存纹理峰值，不据此推算桌面 FPS。
-- [ ] 全仓 `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...` 被既有
-  `tests/window/platform/mobile_start` 与 `mobile_surface` 桌面目标缺少 main 阻挡；
-  同一命令在修改前基线复现，未计为通过。上述受影响目标构建已通过。
-  本轮未执行 macOS 原生、Windows OpenGL、硬件 GPU、真实混合 DPI 或移动端窗口。
+- [x] 恢复椭圆／圆角矩形原生图元，Path 保留 Arc／Bezier；移除强制展平、8×
+  遮罩、专用几何／纹理缓存及不再使用的绑定。既有像素对齐、颜色、裁剪和阴影
+  资源归属保留，不用额外采样追求跨后端一致。契约及开源参考见
+  [DesignGraphicsColor](DesignGraphicsColor.md#direct2d-原生曲线)。
+- [x] 严格数学覆盖预算改为独立原生指令逐像素对照，保留填充／描边、变换、
+  clip、透明合成和擦除覆盖；移除与实现一同取消的缓存专用断言，可变路径更新
+  及旧图片隔离继续验证。未扩大像素容差或增加条件跳过。
+- [x] 新原生对照在旧 8× 实现上失败；恢复后 1920 组组合逐像素一致。Windows 10
+  x64 / WARP 的 Direct2D 整包 137 项测试／子测试通过，零失败、跳过；颜色、
+  渐变、直边、clip、图像资源和绘图状态断言保留。
+- [x] 相同 Windows WARP、256×128 RGBA8、32 图元、四轮各 1 秒完整离屏对照：
+  固定椭圆 799→637 µs、圆角矩形 767→753 µs、自由路径 819→744 µs；全部几何／
+  相位每轮改变时 6.19→0.76 ms，Go 分配 2823→138 次。此为离屏完整操作的中位数，
+  不推算 GPU 或桌面 FPS；高分辨率临时目标和遮罩缓存已移除。
+- [x] Windows 10 x64 / Direct2D / 1x：图形圆角亮暗、阴影、GUI 圆角／Popover、
+  Switch 96 组通过；实际 Demo 的亮暗、混合圆角、选边、滚动及 Switch 操作复核，
+  HUD 确认实际后端。普通原生边缘特征保留，不承诺额外采样后的外观。
+- [x] `progress_regression -case=arc -chrome=native` 使用独立原生 WARP 参考，覆盖
+  7 角度、1/1.25/1.5/2x、亮暗与 48/64 DIP、像素相位及透明度组合：56 阶段通过，
+  最大通道差为 0，沿用 2 级颜色量化预算。结构 clip、视口、直边及重复合成断言
+  继续检查。Software／OpenGL 分支保留原数学参考；Linux X11 / Xfwm4 / Software
+  1x 代表窗口的同一 56 阶段通过。
+- [x] `go test ./... -count=1 -json`：6341 项测试／子测试通过，零失败、跳过；
+  在独立 X11 会话执行，既有 X11 包内测试使用私有窗口／selection。gui／Software
+  无显示 race、Windows Direct2D／SDK／圆弧入口 vet 通过；Windows amd64、macOS
+  arm64 的受影响 platform／gui／ui／widgets／example 目标构建及圆弧入口编译通过。
+- [ ] 本轮未执行 Windows OpenGL、macOS 原生、硬件 GPU、真实混合 DPI 或移动端
+  窗口验收；不以 WARP 或交叉编译代替这些结果。
 
 ### 圆角窗口验证入口
 
