@@ -263,6 +263,14 @@ func (this *RenderTarget) SetTextAntialiasMode(textAntialiasMode TextAntialiasMo
 	this.class().SetTextAntialiasMode.CallRaw(uintptr(cgo.Pointer(this)), uintptr(textAntialiasMode))
 }
 
+func (this *RenderTarget) SetAntialiasMode(mode AntialiasMode) {
+	this.class().SetAntialiasMode.CallRaw(uintptr(cgo.Pointer(this)), uintptr(mode))
+}
+
+func (this *RenderTarget) GetAntialiasMode() AntialiasMode {
+	return cgo.CallRet[AntialiasMode](this.class().GetAntialiasMode, this)
+}
+
 func (this *RenderTarget) Clear(color *ColorF) {
 	this.class().Clear.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(color)))
 }
@@ -382,6 +390,15 @@ type Brush struct {
 	Resource
 }
 
+func (this *Brush) SetTransform(transform *Matrix3x2F) {
+	(*BrushClass)(this.Class).SetTransform.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(transform)))
+}
+
+func (this *Brush) GetTransform() (transform Matrix3x2F) {
+	(*BrushClass)(this.Class).GetTransform.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(&transform)))
+	return
+}
+
 type SolidColorBrushClass struct {
 	BrushClass
 
@@ -487,6 +504,16 @@ type Geometry struct {
 
 func (this *Geometry) Simplify(option GeometrySimplificationOption, transform *Matrix3x2F, tolerance float32, sink *SimplifiedGeometrySink) com.HRESULT {
 	return cgo.CallRet[com.HRESULT]((*GeometryClass)(this.Class).Simplify, this, option, transform, tolerance, sink)
+}
+
+func (this *Geometry) GetBounds(transform *Matrix3x2F) (bounds RectF, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT]((*GeometryClass)(this.Class).GetBounds, this, transform, &bounds)
+	return
+}
+
+func (this *Geometry) GetWidenedBounds(width float32, style *StrokeStyle, transform *Matrix3x2F, tolerance float32) (bounds RectF, hr com.HRESULT) {
+	hr = cgo.CallRet[com.HRESULT]((*GeometryClass)(this.Class).GetWidenedBounds, this, width, style, transform, tolerance, &bounds)
+	return
 }
 
 type EllipseGeometry struct{ Geometry }
@@ -713,6 +740,10 @@ func (this *DeviceContext) GetPrimitiveBlend() PrimitiveBlend {
 
 func (this *DeviceContext) SetTarget(image *Image) {
 	(*DeviceContextClass)(this.Class).SetTarget.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(image)))
+}
+
+func (this *DeviceContext) FillOpacityMask(mask *Bitmap, brush *Brush, destination, source *RectF) {
+	(*DeviceContextClass)(this.Class).FillOpacityMask1.CallRaw(uintptr(cgo.Pointer(this)), uintptr(cgo.Pointer(mask)), uintptr(cgo.Pointer(brush)), uintptr(cgo.Pointer(destination)), uintptr(cgo.Pointer(source)))
 }
 
 func (this *DeviceContext) DrawImage(image *Image, targetOffset *Point2F, imageRect *RectF, interpolation InterpolationMode, composite CompositeMode) {

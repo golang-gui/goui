@@ -7283,3 +7283,28 @@ error，原样全仓命令报编译失败；恢复其既有尽力而为调用后
   未修改基线在同后端、倍率及入口得到完全相同失败。本轮不放宽断言，也不把该项记为通过。
   图形尖端／阴影、Switch 与圆弧窗口的 OpenGL 回归通过，见前节。
 - [ ] macOS 原生、Windows OpenGL、硬件 GPU、真实混合 DPI 与移动端未执行。
+
+## Direct2D 局部曲线覆盖（2026-11-23）
+
+- [x] 重新以 Demo 的混合圆角和选边为验收目标，确认首轮 1/256 细分仍有约
+  24/255、16/255 的局部覆盖误差；面积通过不代表视觉达标。新回归在未修改基线
+  上失败，保留原圆面积／尖端断言，新增实际 Bézier 的独立逐像素积分：最大
+  通道差不超过 6/255、平均边缘差不超过 2/255，覆盖 1/1.25/1.5/2x、两种相位、
+  亮暗底色及半透明。参考与契约见 [DesignGraphicsColor](DesignGraphicsColor.md#设备像素覆盖遮罩2026-11-23)。
+- [x] 原生设备空间的 8×8 覆盖遮罩、三次 2:1 平均缩小及单次画刷合成；按块复用
+  临时目标并限制遮罩缓存项数／字节数。曲线路径缓存不可变指令键，保留引用归属；
+  擦除使用 destination-out。新增渐变坐标／分块／绘图状态、整数平移复用、
+  小数相位、路径数据改变、两种容量淘汰及设备释放回归。
+- [x] `go test ./... -count=1 -json`：6341 项通过，零失败、跳过。Software／gui
+  无显示 race、Windows Direct2D／SDK vet 通过；Windows amd64／macOS arm64 的
+  platform／gui／ui／widgets／example 目标构建通过。
+- [x] Windows 10 x64 / WARP 的最终 Direct2D 包 140 项测试／子测试全部通过；
+  Direct2D 1x 原生窗口的 GUI 圆角／Popover、Switch 96 组和圆弧 56 阶段通过。
+  最终 Demo 的亮暗大圆角、选边收尖和滚动后边缘完成真实操作复核。
+- [x] 相同环境、目标和 32 图元的四轮离屏对照：缓存命中保持原耗时量级；
+  每帧改变全部椭圆几何和相位的中位数约 1.0→6.1 ms。明确记录动态未命中的
+  采样成本和暂存纹理峰值，不据此推算桌面 FPS。
+- [ ] 全仓 `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...` 被既有
+  `tests/window/platform/mobile_start` 与 `mobile_surface` 桌面目标缺少 main 阻挡；
+  同一命令在修改前基线复现，未计为通过。上述受影响目标构建已通过。
+  本轮未执行 macOS 原生、Windows OpenGL、硬件 GPU、真实混合 DPI 或移动端窗口。
