@@ -52,6 +52,7 @@ type paintRequester interface {
 // frame, input, drag-and-drop and the current native surface. Each host embeds
 // its own instance; native window and popover policy remains in those hosts.
 type rootBase struct {
+	shared         *sharedPopoverSlot // one child presentation cache per actual host
 	modal          *modalState
 	app            *application
 	dispatcher     EventDispatcher

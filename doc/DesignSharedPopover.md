@@ -138,3 +138,16 @@ NewTransientPopover 仍已移除。外部旧依赖需将该构造及字段一并
   是帧外目标和实际格式兼容的参考。
 - Microsoft [WaitForCommitCompletion](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice-waitforcommitcompletion)
   等待合成引擎处理先前 Commit，不保证扫描显示完成。
+
+
+## 分层呈现宿主的共享槽
+
+窗口与普通 Popover 各自延迟持有一个共享子槽。锚点属于哪一个实际 Root，
+就使用该 Root 的槽；原生所有者仍由 `anchorSurface` 解析到窗口。菜单的父子层
+因此可以同时显示，同层客户端继续抢占和复用。`SharedPopover` 不实现 Root，
+不承担原生资源所有权。
+
+父宿主 Hide 或替换内容先递归隐藏子槽，保留各层的普通 Popover、Painter 和原生资源；
+客户端 Destroy 只解除客户端及内容。实际宿主 Destroy 递归释放缓存链。
+跨原生所有者时旧缓存释放，不把原窗口的资源迁给新窗口。缓存数量随曾使用的最大深度
+增长，与访问过的菜单项数量无关。短暂绘制目标失效不等于逻辑宿主销毁。
