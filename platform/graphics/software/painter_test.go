@@ -2001,3 +2001,112 @@ func TestFractionalClipEnvelopeAndEmptyRestore(t *testing.T) {
 	assertColorNear(t, img.At(8, 8), color.RGBA{B: 255, A: 255}, 0)
 	assertColorNear(t, img.At(9, 8), color.RGBA{}, 0)
 }
+
+func TestRoundRectBorderCoverage(t *testing.T) {
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		for _, radius := range []geometry.CornerRadius{{TopLeft: 1, TopRight: 18, BottomRight: 5, BottomLeft: 0}, {TopLeft: 36, TopRight: 0, BottomRight: 36, BottomLeft: 0}, geometry.UniformCornerRadius(1)} {
+			d := new(testDrawer)
+			p, err := NewPainter(d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rect := geometry.Rect(4, 4, 48, 40)
+			img, err := p.RenderImage(int(64*scale), int(54*scale), scale, func() {
+				p.Clear(graphics.Color{})
+				p.FillPath(utils.RoundRectBorderPath(rect, radius, 6), graphics.RGBA(200, 80, 40, 128))
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			outer := radius.Normalize(rect.Size)
+			inner := rect.Inset(6)
+			inside := outer.Inset(6).Normalize(inner.Size)
+			mask := func(x, y float32) bool {
+				pt := geometry.Point{X: x, Y: y}
+				return outer.Contains(rect, pt) && !inside.Contains(inner, pt)
+			}
+			// 只对离真实几何边界至少0.75物理像素的位置断言满覆盖／零覆盖；
+			// AA带内仍检查预乘及不重复合成，不把后端AA曲线压成金图。
+			for y := 0; y < img.Bounds().Dy(); y++ {
+				for x := 0; x < img.Bounds().Dx(); x++ {
+					px, py := (float32(x)+.5)/scale, (float32(y)+.5)/scale
+					value := mask(px, py)
+					stable := true
+					for _, dx := range []float32{-.75 / scale, 0, .75 / scale} {
+						for _, dy := range []float32{-.75 / scale, 0, .75 / scale} {
+							stable = stable && mask(px+dx, py+dy) == value
+						}
+					}
+					pixel := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
+					if pixel.A > 129 || pixel.R > pixel.A || pixel.G > pixel.A || pixel.B > pixel.A {
+						t.Fatal("重复合成或非预乘像素", pixel)
+					}
+					if stable && ((value && pixel.A < 126) || (!value && pixel.A > 2)) {
+						t.Fatalf("比例%g 圆角%+v 像素%d,%d：覆盖错误 %v 预期%v", scale, radius, x, y, pixel, value)
+					}
+				}
+			}
+			p.Destroy()
+		}
+	}
+}
+
+type patternedTextLayout struct {
+	testTextLayout
+	requests []image.Rectangle
+}
+
+func (*patternedTextLayout) MeasureSize() (float32, float32) { return 20000, 20 }
+func (l *patternedTextLayout) Rasterize(_ float32, r image.Rectangle, _ []byte) (typography.TextBitmap, error) {
+	l.requests = append(l.requests, r)
+	b := typography.TextBitmap{Width: r.Dx(), Height: r.Dy(), Stride: r.Dx() * 4}
+	b.Pixels = make([]byte, b.Stride*b.Height)
+	for y := 0; y < b.Height; y++ {
+		for x := 0; x < b.Width; x++ {
+			i := b.PixOffset(x, y)
+			b.Pixels[i], b.Pixels[i+3] = byte((x+r.Min.X)&127), 255
+		}
+	}
+	return b, nil
+}
+
+// Expected values come from physical pixel coordinates, independently of the
+// region planner. This catches misplaced regions and repeated per-region snaps.
+func TestLongTextRegionPlacementAtFractionalScale(t *testing.T) {
+	for _, scale := range []float32{1, 1.25, 2} {
+		l := &patternedTextLayout{}
+		var drawer testDrawer
+		base, err := NewPainter(&drawer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		func() {
+			defer base.Destroy()
+			base.Begin(100, 40, scale)
+			base.Clear(graphics.Color{})
+			base.SetClipRect(geometry.Rect(8/scale, 0, 84/scale, 40/scale))
+			origin := geometry.Point{X: -14999.75}
+			base.DrawTextLayout(origin, l)
+			base.End()
+			start := int(math.Round(float64(origin.X * scale)))
+			for x := 0; x < 100; x++ {
+				want := color.RGBA{}
+				if x >= 8 && x < 92 {
+					want = color.RGBA{R: byte((x - start) & 127), A: 255}
+				}
+				got := color.RGBAModel.Convert(drawer.result.At(x, 5)).(color.RGBA)
+				if got != want {
+					t.Fatalf("scale=%g x=%d: %v want %v", scale, x, got, want)
+				}
+			}
+			if len(l.requests) == 0 {
+				t.Fatal("no raster request")
+			}
+			for _, r := range l.requests {
+				if r.Min.X < 10000 || r.Dx() > 1024 || r.Dy() > 1024 {
+					t.Fatal("unbounded or misplaced native request", r)
+				}
+			}
+		}()
+	}
+}
