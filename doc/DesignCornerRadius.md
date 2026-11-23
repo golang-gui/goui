@@ -182,8 +182,8 @@ PaintStyledBackground／Border／Box 在任何圆角或选边组合下，先用 
 
 对齐仍只发生在纯平移及 HiDPI 的物理边界；旋转、缩放、错切保留几何。
 边框内轮廓从该外框按原边宽生成，不再次量化，1.5 物理像素边宽的内缘仍有半覆盖。
-样式策略集中在 GUI，不让各 Painter 的任意 Path 自动取整；Direct2D 的曲线精度
-独立在后端处理，见 [绘制契约](DesignGraphicsColor.md#direct2d-曲线精度)。
+样式策略集中在 GUI，不让各 Painter 的任意 Path 自动取整；Direct2D 的细分与抗锯齿
+交由原生绘制处理，见 [绘制契约](DesignGraphicsColor.md#direct2d-原生曲线)。
 
 此修改只影响样式绘制的设备覆盖，不改写 Widget.Rect、布局、命中、Snapshot 或
 结构 clip；仍使用原有的保守裁剪包络。共享层 Software 回归按独立边界公式检查
