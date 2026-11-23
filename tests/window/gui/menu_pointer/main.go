@@ -238,6 +238,8 @@ func main() {
 			check(activated == "Second" && !menu.Visible(), "Enter activated stale item")
 			must(menu.ShowAt(geometry.Point{X: 12, Y: 36}))
 			check(len(win.Popovers()) == 1, "reopen failed")
+			// 每次显示产生新的借用目标；旧目标在关闭后已经失效。
+			popup = win.Popovers()[0]
 			verify("")
 			key(events.KeyEscape)
 			check(!menu.Visible(), "Escape failed")

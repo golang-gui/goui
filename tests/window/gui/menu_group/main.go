@@ -5,6 +5,8 @@
 // 操作：空闲悬停不打开；点击 File 后移到 Edit/View 切换，左右键循环、上下与 Enter
 // 执行项目；点击展开按钮关闭；点击 Run 同时关闭并执行一次；Esc 后悬停保持关闭；
 // 键盘切换后指针不动应保持该菜单，真实移动才重新跟随；Tab 关闭并继续焦点导航。Rebuild 更新动作代次，Dark 切换外观，组及控件身份保留。
+// 级联菜单：File/Edit/View 的 Recent → More 可展开三级；悬停延迟展开，斜移到子层
+// 不应切到掠过的兄弟项；Right/Left/逐次 Esc 分层进入返回，叶项关闭整链且执行一次。
 // F6/Check 输出 ASSERT PASS、JSON 状态及窗口局部 DIP 的 BOUNDS，仅供观察和定位。
 // 自动场景还验证最新动作闭包、主题重建、空菜单、禁用和不同组隔离；没有语义动作接口。
 // 1x/1.5x/2x、Basic/Modern、亮暗重复。最终记录真实图像资源类型及 PixelScale。
@@ -74,6 +76,8 @@ func main() {
 	dark := flag.Bool("dark", false, "初始 Modern 暗色")
 	flag.Parse()
 	generation, actions, actionGeneration, runs, closed, failures := 1, 0, 0, 0, 0, 0
+	submenuActions := 0
+	deadline := time.Now().Add(20 * time.Second)
 	started, complete, step := false, false, 0
 	var app ui.App
 	var group *gui.MenuButtonGroup
@@ -104,7 +108,7 @@ func main() {
 		require(opened <= 1 && button("other").Group() != group, "group isolation lost")
 		require(app.FindWidget("menus", "main-menu") == group && group.Snapshot().Role == gui.RoleHBox, "menu group is not the actual layout container")
 		require(failures == 0, "unexpected open error")
-		state := map[string]any{"file": button("file").Opened(), "edit": button("edit").Opened(), "view": button("view").Opened(), "runs": runs, "actions": actions, "actionGeneration": actionGeneration, "generation": generation, "closed": closed, "errors": failures, "painter": p.painter, "scale": p.scale}
+		state := map[string]any{"file": button("file").Opened(), "edit": button("edit").Opened(), "view": button("view").Opened(), "runs": runs, "actions": actions, "submenuActions": submenuActions, "actionGeneration": actionGeneration, "generation": generation, "closed": closed, "errors": failures, "painter": p.painter, "scale": p.scale}
 		data, err := json.Marshal(state)
 		must(err)
 		for _, id := range []string{"file", "edit", "view", "run", "empty", "disabled", "other", "rebuild", "dark", "check", "input"} {
@@ -121,6 +125,7 @@ func main() {
 			if *auto {
 				app.TickFunc(250*time.Millisecond, func() {
 					win := app.FindWindow("menus")
+					require(time.Now().Before(deadline), "automatic scenario timed out")
 					require(win != nil, "window missing")
 					// 先等待首帧完成；计时器可能先于原生窗口的首次布局。
 					if step == 0 && (p.scale == 0 || button("file").Rect().Width == 0) {
@@ -195,6 +200,29 @@ func main() {
 						require(button("edit").Opened(), "theme rebuild closed the menu")
 						check()
 						require(p.scale > 0, "painter probe missing")
+						button("edit").Close()
+						click("file")
+						key(events.KeyEnd)
+						key(events.KeyArrowRight)
+					case 12:
+						require(len(win.Popovers()) == 2, "child menu did not open")
+						require(win.Popovers()[0].Widget().Snapshot().Role == gui.RoleMenu, "root semantics missing")
+						key(events.KeyArrowRight)
+					case 13:
+						require(len(win.Popovers()) == 3, "grandchild menu did not open")
+						key(events.KeyEscape)
+						require(len(win.Popovers()) == 2, "Escape closed more than one layer")
+						key(events.KeyArrowRight)
+						key(events.KeyEnter)
+					case 14:
+						require(len(win.Popovers()) == 0 && submenuActions == 1, "leaf did not close and activate exactly once")
+						click("file")
+						key(events.KeyEnd)
+						key(events.KeyArrowRight)
+						key(events.KeyArrowLeft)
+						require(len(win.Popovers()) == 1, "Left did not return to root")
+						key(events.KeyEscape)
+						require(len(win.Popovers()) == 0, "root Escape did not finish the chain")
 						complete = true
 						fmt.Printf("AUTO PASS painter=%s scale=%g\n", p.painter, p.scale)
 						win.Destroy()
@@ -208,6 +236,13 @@ func main() {
 			return ui.MenuButton(label).ID(id).Menu(
 				ui.MenuItem("Action", func() { actions++; actionGeneration = captured; app.RequestUpdate() }),
 				ui.MenuItem("Unavailable", nil).Enabled(false),
+				ui.MenuItem("Recent").Submenu(
+					ui.MenuItem("More").Submenu(
+						ui.MenuItem("Nested action", func() { submenuActions++; app.RequestUpdate() }),
+						ui.MenuItem("Unavailable", nil).Enabled(false),
+					),
+					ui.MenuItem("Other recent item", func() { submenuActions++; app.RequestUpdate() }),
+				),
 			).OnClosed(func() { closed++; app.RequestUpdate() }).OnOpenError(func(error) { failures++ })
 		}
 		sheet := gui.DefaultStyleSheet()
@@ -222,7 +257,7 @@ func main() {
 				ui.MenuButtonGroup(ui.MenuButton("Other").ID("other").Menu(ui.MenuItem("Other action", nil))),
 				ui.TextInput().ID("input").BindText(&input).MinWidth(280),
 				ui.HBox(ui.Button("Rebuild").ID("rebuild").OnClick(func() { generation++; app.RequestUpdate() }), ui.Button("Dark").ID("dark").OnClick(func() { *dark = !*dark; app.RequestUpdate() }), ui.Button("Check").ID("check").OnClick(check)).Spacing(10),
-				ui.Label(fmt.Sprintf("Actions %d (generation %d) | Runs %d | Closed %d", actions, actionGeneration, runs, closed)),
+				ui.Label(fmt.Sprintf("Actions %d (generation %d) | Runs %d | Closed %d | Nested %d", actions, actionGeneration, runs, closed, submenuActions)),
 				ui.Label("Open File, then hover Edit/View. Arrows navigate; Escape/Tab close. F6 checks."), newProbe(p),
 			).Padding(16).Spacing(14).CrossAlign(layout.CrossStart).Shortcuts(ui.Shortcut(ui.KeyF6).OnActivate(check)),
 		).OnDestroy(func() {
