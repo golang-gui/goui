@@ -1,17 +1,17 @@
 # Popover 与 SharedPopover
 
-本文记录 2026-11-17 确认的收敛设计，替代上一版的独立共享 Root 结构。
+本文记录 2026-11-17 确认的收敛设计，并于 2026-11-23 扩展分层呈现宿主，替代独立共享 Root 结构。
 实现与验证进度见 [Plan](Plan.md)。
 
 ## 两个概念和唯一实际宿主
 
 Popover 是完整的 GUI 弹层，拥有 Root、控件树、布局、输入、焦点、帧、原生 Popup 和
-Painter。SharedPopover 是轻量客户端，仅保存配置与内容引用，并协调使用 Surface 缓存。
+Painter。SharedPopover 是轻量客户端，仅保存配置与内容引用，并协调使用最近呈现宿主的缓存。
 不增加 ReusedPopover 或另一种实际 Root。
 
-Surface 的私有共享槽缓存一个普通 `*popover`，协调状态不实现 Root、不嵌入 rootBase。
-独立创建的普通 Popover 不占共享槽，可以与共享弹层同时显示。每个 Surface 的共享
-Root、Popup 和 Painter 在正常反复显示和客户端切换中保持同一身份。
+Window 与普通 Popover 的私有共享子槽各缓存一个普通 `*popover`；槽本身不实现 Root、
+不嵌入 rootBase。独立创建的普通 Popover 不占窗口共享槽，也可提供自己的共享子槽。
+每层的 Root、Popup 和 Painter 在正常反复显示和同层客户端切换中保持同一身份。
 
 `Widget.Root()` 返回实际普通 Popover。它是借用对象；能进行类型断言不等于取得缓存
 宿主的所有权。SharedPopover 句柄不实现 Root，Destroy 永远不销毁共享宿主。
@@ -56,9 +56,10 @@ Hide 只结束自身显示，保留至多一份挂载树；同客户端重开不
 Destroy、锚点卸载或替换已缓存的内容只移除自身缓存和连接，不销毁原生资源。旧客户端
 的设置、输入、焦点、Hide/Destroy 不能影响后来客户端。内容卸载不隐式 Destroy Widget。
 
-SharedPopover 迁窗时改用目标 Surface 的缓存，源缓存留下；不同于普通 Popover 跨窗
-释放重建自己的一套资源。即将被替换内容不能充当新共享客户端的锚点。
-Tooltip 不抢占菜单和列表，后两者打开时取消待显示提示。级联菜单不在单槽契约内。
+SharedPopover 迁移到另一呈现宿主时改用目标缓存，源缓存留下；不同于普通 Popover 跨窗
+释放重建自己的一套资源。嵌套锚点选择父 Popover 的子槽，不替换父层；同层客户端仍
+不能依赖即将卸载的内容。Tooltip 不抢占菜单和列表，后两者打开时取消待显示提示。
+级联按每宿主一级的方式复用，不把一条菜单链塞进窗口同一个槽。
 
 所有外部回调后复核生命周期、请求和原生代次。共享槽内部关闭观察者先撤销旧身份，
 再转发客户端关闭；已完成清理后允许 Closed 重入。绘制或不安全过渡中的同步抢占

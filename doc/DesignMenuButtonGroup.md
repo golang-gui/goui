@@ -14,8 +14,10 @@ Button。后代 MenuButton 自动归属最近的组，嵌套组形成边界；�
 及窗口失焦关闭。正常 owner Motion 与键盘控制器完成联动；Window 不识别
 MenuButton 或组，Root／BuildContext 也不增加具体控件分支。
 
-本轮不包含子菜单、系统原生菜单栏或助记符。相关后续设计见
-[子菜单](DesignMenuSubmenu.md)，通用能力见 [Popup](DesignPopup.md)。
+本组负责顶层切换；级联交互由 PopoverMenu 实现，系统原生菜单栏和助记符另行规划。见
+[子菜单](DesignMenuSubmenu.md)及 [MenuBar／macOS 原生菜单栏](DesignMenuBar.md)，
+通用能力见 [Popup](DesignPopup.md)。MenuBar 接收菜单模型；本组仍保留任意按钮内容
+和普通控件混排，不自动注册为系统菜单。
 
 ## 公开接口
 
