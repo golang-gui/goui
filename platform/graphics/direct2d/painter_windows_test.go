@@ -8,7 +8,6 @@ import (
 	"math"
 	"runtime"
 	"slices"
-	"strings"
 	"syscall"
 	"testing"
 	"unsafe"
@@ -17,7 +16,6 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/internal/diagnostic"
 	"github.com/golang-gui/goui/platform/graphics"
-	"github.com/golang-gui/goui/platform/graphics/utils"
 	"github.com/golang-gui/goui/platform/windows/sdk/com"
 	"github.com/golang-gui/goui/platform/windows/sdk/d2d1"
 	"github.com/golang-gui/goui/platform/windows/sdk/d3d11"
@@ -25,91 +23,127 @@ import (
 	"github.com/golang-gui/goui/platform/windows/sdk/dxgi"
 )
 
-// 预乘 RGBA8，按独立圆方程对边缘像素做 64×64 面积采样。
-// 形内/形外用逆变换后的保守距离判定；量化预算为每个边缘像素半级 alpha。
-// 面积另留 0.02 px 的周长误差预算，包含原生栅格化误差，不以整幅图片平均稀释边缘误差。
-func TestCurveCoverageAtPhysicalPixelScale(t *testing.T) {
+// 原生 Direct2D 是本后端的曲线参考，不要求原生 AA 逼近理想面积积分。
+// 两幅图只共用 WARP 目标创建/回读；参考独立设置 DPI、矩阵、clip、颜色，
+// 并直接调用原生图元或手写 GeometrySink，不调用生产路径转换、细分或像素对齐 helper。
+// 预乘 sRGB/RGBA8，使用可精确表达的颜色，逐像素要求完全相同。
+func TestCurvesMatchNativeDirect2D(t *testing.T) {
 	p := newRenderImageTestPainter(t)
+	arc := graphics.MoveTo(8, 20).ArcTo(12, 8, 17, 1, 1, 32, 20).LineTo(20, 34).Close()
+	bezier := graphics.MoveTo(8, 20).BezierTo(8, 4, 32, 4, 32, 20).BezierTo(32, 36, 8, 36, 8, 20).Close()
+	ring := graphics.MoveTo(8, 20).ArcTo(12, 8, 0, 0, 1, 32, 20).ArcTo(12, 8, 0, 0, 1, 8, 20).Close().
+		MoveTo(12, 20).Hole().ArcTo(8, 4, 0, 0, 0, 28, 20).ArcTo(8, 4, 0, 0, 0, 12, 20).Close()
 	for _, scale := range []float32{1, 1.25, 1.5, 2} {
-		for _, offset := range []float32{0, .5} {
-			for _, linear := range []geometry.Transform{geometry.Identity(), geometry.Rotate(23), geometry.Rotate(23).Scale(1.3, .8)} {
-				transform := geometry.Translate(24+offset, 24+offset).Multiply(linear)
-				for _, kind := range []string{"ellipse", "rounded", "arc", "ring", "ellipse-stroke", "rounded-stroke"} {
-					for _, alpha := range []uint8{128, 255} {
-						ref := transform
-						if (kind == "rounded" || kind == "rounded-stroke") && linear == geometry.Identity() {
-							// 仅矩形原语吸附外框，圆与自由路径保持小数圆心。
-							ref.TX = float32(math.Floor(float64(transform.TX*scale)+.5)) / scale
-							ref.TY = float32(math.Floor(float64(transform.TY*scale)+.5)) / scale
-						}
-						inner := float32(0)
-						if kind == "ring" || strings.HasSuffix(kind, "-stroke") {
-							inner = 6
-						}
-						img, err := p.RenderImage(int(64*scale), int(64*scale), scale, func() {
-							p.SetTransform(transform)
-							p.SetClipRect(graphics.Rect(2, 2, 58, 58))
-							brush := graphics.RGBA(40, 100, 220, alpha)
-							switch kind {
-							case "ellipse":
-								p.FillEllipse(geometry.Point{}, 8, 8, brush)
-							case "rounded":
-								p.FillRoundRect(graphics.Rect(-8, -8, 16, 16), 8, brush)
-							case "arc":
-								path := graphics.MoveTo(-8, 0).ArcTo(8, 8, 0, 0, 1, 8, 0).ArcTo(8, 8, 0, 0, 1, -8, 0).Close()
-								p.FillPath(path, brush)
-							case "ring":
-								path := graphics.MoveTo(-8, 0).ArcTo(8, 8, 0, 0, 1, 8, 0).ArcTo(8, 8, 0, 0, 1, -8, 0).Close().
-									MoveTo(-6, 0).Hole().ArcTo(6, 6, 0, 0, 0, 6, 0).ArcTo(6, 6, 0, 0, 0, -6, 0).Close()
-								p.FillPath(path, brush)
-							case "ellipse-stroke":
-								p.DrawEllipse(geometry.Point{}, 7, 7, 2, brush)
-							case "rounded-stroke":
-								p.DrawRoundRect(graphics.Rect(-7, -7, 14, 14), 7, 2, brush)
-							}
-						})
-						if err != nil {
-							t.Fatal(err)
-						}
-						inverse := ref.Inverse()
-						reach := float64(inverse.MaxScale()/scale) * math.Sqrt(.5)
-						var area, expected, errorSum float64
-						edges := 0
-						for y := range img.Bounds().Dy() {
-							for x := range img.Bounds().Dx() {
-								point := inverse.TransformPoint(geometry.Point{X: (float32(x) + .5) / scale, Y: (float32(y) + .5) / scale})
-								distance := math.Hypot(float64(point.X), float64(point.Y))
-								coverage := float64(0)
-								if distance+reach < 8 && (inner == 0 || distance-reach > float64(inner)) {
-									coverage = 1
-								} else if distance-reach <= 8 && (inner == 0 || distance+reach >= float64(inner)) {
-									for sy := range 64 {
-										for sx := range 64 {
-											pt := inverse.TransformPoint(geometry.Point{X: (float32(x) + (float32(sx)+.5)/64) / scale, Y: (float32(y) + (float32(sy)+.5)/64) / scale})
-											r2 := pt.X*pt.X + pt.Y*pt.Y
-											if r2 <= 64 && r2 >= inner*inner {
-												coverage += 1.0 / (64 * 64)
+		for _, phase := range []float32{0, .5} {
+			for _, linear := range []geometry.Transform{geometry.Identity(), geometry.Rotate(23).Scale(1.3, .8)} {
+				transform := geometry.Translate(24+phase/scale, 12+phase/scale).Multiply(linear)
+				for _, clipped := range []bool{false, true} {
+					for _, alpha := range []float32{.5, 1} {
+						for _, matte := range []graphics.Color{{}, {R: 1, G: 1, B: 1, A: 1}, {R: .125, G: .125, B: .125, A: 1}} {
+							for _, kind := range []string{"ellipse", "ellipse-stroke", "rounded", "rounded-stroke", "arc", "arc-stroke", "bezier", "bezier-stroke", "ring", "erase"} {
+								w, h := int(80*scale), int(64*scale)
+								got, err := p.RenderImage(w, h, scale, func() {
+									p.Clear(matte)
+									p.SetTransform(transform)
+									if clipped {
+										p.SetClipRect(graphics.Rect(34.25, 18.5, 20.5, 22.25))
+									}
+									ink := graphics.Color{R: .25 * alpha, G: .5 * alpha, B: .75 * alpha, A: alpha}
+									switch kind {
+									case "ellipse":
+										p.FillEllipse(graphics.Point{X: 20, Y: 20}, 12, 8, ink)
+									case "ellipse-stroke":
+										p.DrawEllipse(graphics.Point{X: 20, Y: 20}, 12, 8, 2, ink)
+									case "rounded":
+										p.FillRoundRect(graphics.Rect(8, 12, 24, 16), 6, ink)
+									case "rounded-stroke":
+										p.DrawRoundRect(graphics.Rect(8, 12, 24, 16), 6, 2, ink)
+									case "arc":
+										p.FillPath(arc, ink)
+									case "arc-stroke":
+										p.DrawPath(arc, 2, ink)
+									case "bezier":
+										p.FillPath(bezier, ink)
+									case "bezier-stroke":
+										p.DrawPath(bezier, 2, ink)
+									case "ring":
+										p.FillPath(ring, ink)
+									case "erase":
+										p.ClearPath(bezier)
+									}
+								})
+								if err != nil {
+									t.Fatal(err)
+								}
+								want, err := p.RenderImage(w, h, scale, func() {
+									context := p.render
+									context.SetDpi(96*scale, 96*scale)
+									context.SetAntialiasMode(d2d1.D2D1_ANTIALIAS_MODE_PER_PRIMITIVE)
+									context.Clear(&d2d1.ColorF{R: matte.R, G: matte.G, B: matte.B, A: matte.A})
+									if clipped {
+										// clip 是窗口局部的物理像素向外包络，不随图元变换。
+										clip := d2d1.RectF{Left: float32(math.Floor(float64(34.25*scale))) / scale, Top: float32(math.Floor(float64(18.5*scale))) / scale,
+											Right: float32(math.Ceil(float64(54.75*scale))) / scale, Bottom: float32(math.Ceil(float64(40.75*scale))) / scale}
+										context.PushAxisAlignedClip(&clip, d2d1.D2D1_ANTIALIAS_MODE_ALIASED)
+										defer context.PopAxisAlignedClip()
+									}
+									matrix := d2d1.Matrix3x2F{M11: transform.A11, M12: transform.A21, M21: transform.A12, M22: transform.A22, M31: transform.TX, M32: transform.TY}
+									context.SetTransform(&matrix)
+									brush, hr := context.CreateSolidColorBrush(&d2d1.ColorF{R: .25, G: .5, B: .75, A: alpha}, nil)
+									checkTestHR(t, "创建原生参考画刷", hr)
+									defer brush.Release()
+									ellipse := d2d1.Ellipse{Point: d2d1.Point2F{X: 20, Y: 20}, RadiusX: 12, RadiusY: 8}
+									round := d2d1.RoundRect{Rect: d2d1.RectF{Left: 8, Top: 12, Right: 32, Bottom: 28}, RadiusX: 6, RadiusY: 6}
+									if linear == geometry.Identity() {
+										// 矩形原语对齐外轮廓，描边随后恢复中心线；自由曲线不对齐。
+										half := float32(0)
+										if kind == "rounded-stroke" {
+											half = 1
+										}
+										round.Rect = d2d1.RectF{
+											Left:   float32(math.Floor(float64((8-half+transform.TX)*scale+.5)))/scale - transform.TX + half,
+											Top:    float32(math.Floor(float64((12-half+transform.TY)*scale+.5)))/scale - transform.TY + half,
+											Right:  float32(math.Floor(float64((32+half+transform.TX)*scale+.5)))/scale - transform.TX - half,
+											Bottom: float32(math.Floor(float64((28+half+transform.TY)*scale+.5)))/scale - transform.TY - half,
+										}
+									}
+									switch kind {
+									case "ellipse":
+										context.FillEllipse(&ellipse, &brush.Brush)
+									case "ellipse-stroke":
+										context.DrawEllipse(&ellipse, &brush.Brush, 2, nil)
+									case "rounded":
+										context.FillRoundedRectangle(&round, &brush.Brush)
+									case "rounded-stroke":
+										context.DrawRoundedRectangle(&round, &brush.Brush, 2, nil)
+									default:
+										path := nativeCurveReference(t, p.factory, kind)
+										defer path.Release()
+										if kind == "erase" {
+											brush.SetColor(&d2d1.ColorF{})
+											context.SetPrimitiveBlend(d2d1.D2D1_PRIMITIVE_BLEND_COPY)
+											defer context.SetPrimitiveBlend(d2d1.D2D1_PRIMITIVE_BLEND_SOURCE_OVER)
+										}
+										if kind == "arc-stroke" || kind == "bezier-stroke" {
+											context.DrawGeometry(&path.Geometry, &brush.Brush, 2, nil)
+										} else {
+											context.FillGeometry(&path.Geometry, &brush.Brush, nil)
+										}
+									}
+								})
+								if err != nil {
+									t.Fatal(err)
+								}
+								if !bytes.Equal(got.(*image.RGBA).Pix, want.(*image.RGBA).Pix) {
+									for y := range h {
+										for x := range w {
+											if got.At(x, y) != want.At(x, y) {
+												t.Fatalf("%s/%gx/phase%g/transform%v/clip%t/alpha%g/matte%v (%d,%d)=%v，原生%v", kind, scale, phase, linear, clipped, alpha, matte, x, y, got.At(x, y), want.At(x, y))
 											}
 										}
 									}
 								}
-								pixel := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
-								got := float64(pixel.A) / float64(alpha)
-								area += got
-								expected += coverage
-								errorSum += math.Abs(got - coverage)
-								if coverage > 0 && coverage < 1 {
-									edges++
-								}
-								if pixel.R > pixel.A || pixel.G > pixel.A || pixel.B > pixel.A {
-									t.Fatal("曲线输出不满足预乘契约", pixel)
-								}
 							}
-						}
-						perimeter := 2 * math.Pi * float64((8+inner)*scale*linear.MaxScale())
-						budget := .02*perimeter + .5*float64(edges)/float64(alpha) + .1
-						if edges == 0 || math.Abs(area-expected) > budget || errorSum > .04*float64(edges)+.5 {
-							t.Fatalf("%s scale=%g offset=%g transform=%v alpha=%d：面积=%g 参考=%g 预算=%g，边缘误差=%g/%d", kind, scale, offset, linear, alpha, area, expected, budget, errorSum, edges)
 						}
 					}
 				}
@@ -118,170 +152,71 @@ func TestCurveCoverageAtPhysicalPixelScale(t *testing.T) {
 	}
 }
 
-// 收尖处由外圆减去内椭圆独立积分；1/64 px 细分会在旋转后的尖端丢失覆盖。
-// 预乘 RGBA8 的 8 级预算沿用窗口回归，包含原生 AA 与 64×64 采样差异。
-func TestTaperedCurveCoverage(t *testing.T) {
-	p := newRenderImageTestPainter(t)
-	for _, scale := range []float32{1, 1.25, 1.5, 2} {
-		for _, angle := range []float32{0, 90} {
-			transform := geometry.Translate(64, 64).Rotate(angle).Translate(-56, -44)
-			img, err := p.RenderImage(int(128*scale), int(128*scale), scale, func() {
-				p.SetTransform(transform)
-				p.FillPath(utils.RoundRectBorderInsetsPath(graphics.Rect(16, 16, 80, 56), geometry.UniformCornerRadius(16), geometry.Insets{Top: 4}), graphics.RGB(255, 255, 255))
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			inverse := transform.Inverse()
-			for _, dy := range []float32{.5, 1.5} {
-				point := transform.TransformPoint(geometry.Point{X: 96 - .5/scale, Y: 32 - dy/scale})
-				x, y := int(math.Floor(float64(point.X*scale))), int(math.Floor(float64(point.Y*scale)))
-				count := 0
-				for sy := range 64 {
-					for sx := range 64 {
-						q := inverse.TransformPoint(geometry.Point{X: (float32(x) + (float32(sx)+.5)/64) / scale, Y: (float32(y) + (float32(sy)+.5)/64) / scale})
-						dx, dy := float64(q.X)-80, float64(q.Y)-32
-						if dx*dx+dy*dy <= 16*16 && dx*dx/(16*16)+dy*dy/(12*12) > 1 {
-							count++
-						}
-					}
-				}
-				want := float64(count) * 255 / (64 * 64)
-				got := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
-				for _, c := range []uint8{got.R, got.G, got.B, got.A} {
-					if math.Abs(float64(c)-want) > 8 {
-						t.Fatalf("%gx/%g°/(%d,%d)：%v，独立覆盖参考%g", scale, angle, x, y, got, want)
-					}
-				}
-			}
-		}
+// 固定输入的独立原生指令，不遍历 graphics.Path 或复用生产路径转换。
+func nativeCurveReference(t *testing.T, factory *d2d1.Factory1, kind string) *d2d1.PathGeometry {
+	t.Helper()
+	path, hr := factory.CreatePathGeometry()
+	checkTestHR(t, "创建原生参考路径", hr)
+	sink, hr := path.Open()
+	if hr.Failed() {
+		path.Release()
+		t.Fatal("打开原生参考路径", hr)
 	}
+	defer sink.Release()
+	sink.SetFillMode(d2d1.D2D1_FILL_MODE_ALTERNATE)
+	begin := d2d1.D2D1_FIGURE_BEGIN_FILLED
+	if kind == "arc-stroke" || kind == "bezier-stroke" {
+		begin = d2d1.D2D1_FIGURE_BEGIN_HOLLOW
+	}
+	sink.BeginFigure(d2d1.Point2F{X: 8, Y: 20}, begin)
+	switch kind {
+	case "arc", "arc-stroke":
+		sink.AddArc(&d2d1.ArcSegment{Point: d2d1.Point2F{X: 32, Y: 20}, Size: d2d1.SizeF{Width: 12, Height: 8}, RotationAngle: 17, SweepDirection: d2d1.D2D1_SWEEP_DIRECTION_CLOCKWISE, ArcSize: d2d1.D2D1_ARC_SIZE_LARGE})
+		sink.AddLine(d2d1.Point2F{X: 20, Y: 34})
+	case "ring":
+		sink.AddArc(&d2d1.ArcSegment{Point: d2d1.Point2F{X: 32, Y: 20}, Size: d2d1.SizeF{Width: 12, Height: 8}, SweepDirection: d2d1.D2D1_SWEEP_DIRECTION_CLOCKWISE})
+		sink.AddArc(&d2d1.ArcSegment{Point: d2d1.Point2F{X: 8, Y: 20}, Size: d2d1.SizeF{Width: 12, Height: 8}, SweepDirection: d2d1.D2D1_SWEEP_DIRECTION_CLOCKWISE})
+		sink.EndFigure(d2d1.D2D1_FIGURE_END_CLOSED)
+		sink.BeginFigure(d2d1.Point2F{X: 12, Y: 20}, begin)
+		sink.AddArc(&d2d1.ArcSegment{Point: d2d1.Point2F{X: 28, Y: 20}, Size: d2d1.SizeF{Width: 8, Height: 4}, SweepDirection: d2d1.D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE})
+		sink.AddArc(&d2d1.ArcSegment{Point: d2d1.Point2F{X: 12, Y: 20}, Size: d2d1.SizeF{Width: 8, Height: 4}, SweepDirection: d2d1.D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE})
+	default:
+		sink.AddBezier(&d2d1.BezierSegment{Point1: d2d1.Point2F{X: 8, Y: 4}, Point2: d2d1.Point2F{X: 32, Y: 4}, Point3: d2d1.Point2F{X: 32, Y: 20}})
+		sink.AddBezier(&d2d1.BezierSegment{Point1: d2d1.Point2F{X: 32, Y: 36}, Point2: d2d1.Point2F{X: 8, Y: 36}, Point3: d2d1.Point2F{X: 8, Y: 20}})
+	}
+	sink.EndFigure(d2d1.D2D1_FIGURE_END_CLOSED)
+	if hr := sink.Close(); hr.Failed() {
+		path.Release()
+		t.Fatal("关闭原生参考路径", hr)
+	}
+	return path
 }
 
-// 逐像素检查 Demo 的 24/4 混合圆角、2 DIP 环带和 16 DIP 选边。
-// 参考独立求解标准四分之一 cubic 的单调方程，再按 y 积分 256 次，x 取精确区间交集。
-// 不把圆的理想方程与实际传入的 Bézier 混为一谈；圆面积另有独立回归。
-// 预乘 sRGB/RGBA8：6 级 alpha 预算含原生 8x 覆盖和三次缩小量化；
-// 同时限制平均边缘误差为 2 级，避免总面积/大片内部稀释局部缺陷。
-func TestCornerLocalCoverage(t *testing.T) {
+func TestCurvePathUpdatesUseCurrentData(t *testing.T) {
 	p := newRenderImageTestPainter(t)
-	rect := graphics.Rect(20, 20, 200, 96)
-	for _, scale := range []float32{1, 1.25, 1.5, 2} {
-		for _, phase := range []float32{0, .5} {
-			for _, kind := range []string{"outer", "ring", "selected"} {
-				radius := geometry.CornerRadius{TopLeft: 24, TopRight: 4, BottomRight: 24, BottomLeft: 4}
-				insets := geometry.Insets{}
-				path := utils.RoundRectPath(rect, radius)
-				if kind == "ring" {
-					insets = geometry.UniformInsets(2)
-					path = utils.RoundRectBorderPath(rect, radius, 2)
-				} else if kind == "selected" {
-					radius, insets = geometry.UniformCornerRadius(16), geometry.Insets{Left: 4, Bottom: 4}
-					path = utils.RoundRectBorderInsetsPath(rect, radius, insets)
-				}
-				w, h := int(256*scale), int(144*scale)
-				reference := make([]float64, w*h)
-				interval := func(y float64, inset geometry.Insets) (float64, float64) {
-					left, top := float64(rect.X+inset.Left), float64(rect.Y+inset.Top)
-					right, bottom := float64(rect.X+rect.Width-inset.Right), float64(rect.Y+rect.Height-inset.Bottom)
-					if y < top || y >= bottom {
-						return 0, 0
-					}
-					for _, corner := range [][4]float64{
-						{left, top, float64(radius.TopLeft - inset.Left), float64(radius.TopLeft - inset.Top)},
-						{right, top, float64(radius.TopRight - inset.Right), float64(radius.TopRight - inset.Top)},
-						{right, bottom, float64(radius.BottomRight - inset.Right), float64(radius.BottomRight - inset.Bottom)},
-						{left, bottom, float64(radius.BottomLeft - inset.Left), float64(radius.BottomLeft - inset.Bottom)},
-					} {
-						rx, ry := max(0, corner[2]), max(0, corner[3])
-						distance := math.Abs(y - corner[1])
-						if ry == 0 || distance >= ry {
-							continue
-						}
-						// (0,1) -> (1,0)，控制点为 (0,1-k)、(1-k,0)。
-						k := 4.0 / 3 * math.Tan(math.Pi/8)
-						lo, hi := float64(0), float64(1)
-						for range 30 {
-							t := (lo + hi) / 2
-							u := 1 - t
-							if u*u*u+3*(1-k)*u*u*t > distance/ry {
-								lo = t
-							} else {
-								hi = t
-							}
-						}
-						t := (lo + hi) / 2
-						insetX := rx * (3*(1-k)*(1-t)*t*t + t*t*t)
-						if corner[0] == float64(rect.X+inset.Left) {
-							left = max(left, corner[0]+insetX)
-						} else {
-							right = min(right, corner[0]-insetX)
-						}
-					}
-					return left*float64(scale) + float64(phase), right*float64(scale) + float64(phase)
-				}
-				for y := range h {
-					for sy := range 256 {
-						position := (float64(y) + (float64(sy)+.5)/256 - float64(phase)) / float64(scale)
-						left, right := interval(position, geometry.Insets{})
-						innerLeft, innerRight := float64(0), float64(0)
-						if kind != "outer" {
-							innerLeft, innerRight = interval(position, insets)
-						}
-						for x := range w {
-							area := max(0, min(float64(x+1), right)-max(float64(x), left))
-							area -= max(0, min(float64(x+1), innerRight)-max(float64(x), innerLeft))
-							reference[y*w+x] += area / 256
-						}
-					}
-				}
-				for _, alpha := range []uint8{128, 255} {
-					for _, matte := range []graphics.Color{{}, graphics.RGB(255, 255, 255), graphics.RGB(38, 40, 46)} {
-						ink := graphics.RGBA(30, 110, 220, alpha)
-						img, err := p.RenderImage(w, h, scale, func() {
-							p.Clear(matte)
-							p.SetTransform(geometry.Translate(phase/scale, phase/scale))
-							p.FillPath(path, ink)
-						})
-						if err != nil {
-							t.Fatal(err)
-						}
-						var errorSum float64
-						edges := 0
-						for y := range h {
-							for x := range w {
-								coverage := reference[y*w+x]
-								got := color.RGBAModel.Convert(img.At(x, y)).(color.RGBA)
-								want := []float64{
-									float64(ink.R)*coverage + float64(matte.R)*(1-float64(ink.A)*coverage),
-									float64(ink.G)*coverage + float64(matte.G)*(1-float64(ink.A)*coverage),
-									float64(ink.B)*coverage + float64(matte.B)*(1-float64(ink.A)*coverage),
-									float64(ink.A)*coverage + float64(matte.A)*(1-float64(ink.A)*coverage),
-								}
-								local := float64(0)
-								for i, value := range []uint8{got.R, got.G, got.B, got.A} {
-									delta := math.Abs(float64(value) - want[i]*255)
-									if delta > 6 {
-										t.Fatalf("%s/%gx/phase%g/alpha%d/matte%v (%d,%d)=%v，覆盖参考%g，通道%d误差%g", kind, scale, phase, alpha, matte, x, y, got, coverage, i, delta)
-									}
-									local = max(local, delta)
-								}
-								if coverage > 0 && coverage < 1 {
-									errorSum += local
-									edges++
-								}
-							}
-						}
-						if edges == 0 || errorSum/float64(edges) > 2 {
-							t.Fatal("局部曲线的平均覆盖误差超出预算", errorSum, edges)
-						}
-					}
-				}
-			}
+	path := graphics.MoveTo(8, 20).BezierTo(8, 4, 32, 4, 32, 20).BezierTo(32, 36, 8, 36, 8, 20).Close()
+	render := func() image.Image {
+		img, err := p.RenderImage(80, 64, 1, func() { p.FillPath(path, graphics.RGB(255, 255, 255)) })
+		if err != nil {
+			t.Fatal(err)
 		}
+		return img
 	}
-	if len(p.coverage.entries) == 0 {
-		t.Fatal("没有实际生成原生覆盖遮罩")
+	before := render()
+	path.Range(func(op graphics.PathOperation, args []float32) bool {
+		if op == graphics.PathMoveTo {
+			args[0] += 32
+		} else if op == graphics.PathBezierTo {
+			args[0], args[2], args[4] = args[0]+32, args[2]+32, args[4]+32
+		}
+		return false
+	})
+	after := render()
+	_, _, _, original := before.At(20, 20).RGBA()
+	_, _, _, moved := after.At(52, 20).RGBA()
+	_, _, _, cleared := after.At(20, 20).RGBA()
+	if original != 65535 || moved != 65535 || cleared != 0 {
+		t.Fatal("路径数据更新污染旧图片或复用过时几何", original, moved, cleared)
 	}
 }
 
@@ -335,94 +270,9 @@ func BenchmarkCurveGeometryUpdates(b *testing.B) {
 	}
 }
 
-func TestCoverageCacheLifecycle(t *testing.T) {
-	p := newRenderImageTestPainter(t)
-	draw := func(offset float32, ink graphics.Brush, radius float32) {
-		_, err := p.RenderImage(80, 64, 1, func() {
-			p.SetTransform(geometry.Translate(offset, offset))
-			p.FillEllipse(geometry.Point{X: 16, Y: 16}, radius, radius, ink)
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	draw(0, graphics.RGB(255, 0, 0), 8)
-	if len(p.coverage.entries) != 1 {
-		t.Fatal("没有创建单个圆的覆盖遮罩")
-	}
-	first := p.coverage.entries[0]
-	draw(2, graphics.RGBA(0, 80, 255, 128), 8)
-	if len(p.coverage.entries) != 1 || p.coverage.entries[0].bitmap != first.bitmap {
-		t.Fatal("颜色或整数平移不应重建覆盖遮罩")
-	}
-	draw(.5, graphics.RGB(255, 255, 255), 8)
-	if len(p.coverage.entries) != 2 {
-		t.Fatal("小数相位错误复用旧遮罩")
-	}
-	path := utils.RoundRectPath(graphics.Rect(8, 8, 20, 16), geometry.UniformCornerRadius(4))
-	renderPath := func() image.Image {
-		img, err := p.RenderImage(80, 64, 1, func() { p.FillPath(path, graphics.RGB(255, 255, 255)) })
-		if err != nil {
-			t.Fatal(err)
-		}
-		return img
-	}
-	before := renderPath()
-	path.Range(func(op graphics.PathOperation, args []float32) bool {
-		switch op {
-		case graphics.PathMoveTo, graphics.PathLineTo:
-			args[0] += 20
-		case graphics.PathBezierTo:
-			args[0], args[2], args[4] = args[0]+20, args[2]+20, args[4]+20
-		}
-		return false
-	})
-	after := renderPath()
-	_, _, _, old := before.At(16, 16).RGBA()
-	_, _, _, moved := after.At(36, 16).RGBA()
-	_, _, _, cleared := after.At(16, 16).RGBA()
-	if old != 65535 || moved != 65535 || cleared != 0 {
-		t.Fatal("路径数据改变后错误复用了原生几何或遮罩")
-	}
-	for i := range curveCacheCapacity + 1 {
-		draw(0, graphics.RGB(255, 255, 255), 7+float32(i)/1000)
-	}
-	// 轮廓缓存已淘汰此项，遮罩必须仍持有自己的几何引用。
-	if _, hr := first.key.geometry.GetBounds(nil); hr.Failed() {
-		t.Fatal("轮廓淘汰使覆盖遮罩的几何提前失效", hr)
-	}
-	for i := range coverageCacheCapacity + 1 {
-		draw(0, graphics.RGB(255, 255, 255), 6+float32(i)/1000)
-	}
-	if len(p.coverage.entries) > coverageCacheCapacity || p.coverage.bytes > coverageCacheBytes {
-		t.Fatal("遮罩缓存超过容量上限", len(p.coverage.entries), p.coverage.bytes)
-	}
-	// 少量大图元先触及字节预算，不能只限制缓存项数。
-	for i := range 3 {
-		_, err := p.RenderImage(640, 640, 1, func() {
-			p.FillRoundRect(graphics.Rect(2, 2, 600, 600), 20+float32(i), graphics.RGB(255, 255, 255))
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	if p.coverage.bytes > coverageCacheBytes || len(p.coverage.entries) >= coverageCacheCapacity {
-		t.Fatal("大遮罩没有按字节预算淘汰", len(p.coverage.entries), p.coverage.bytes)
-	}
-	p.releaseDeviceResources()
-	if p.coverage.render != nil || p.coverage.brush != nil || len(p.coverage.entries) != 0 || p.coverage.bytes != 0 {
-		t.Fatal("设备释放后仍持有覆盖资源")
-	}
-	for _, bitmap := range p.coverage.scratch {
-		if bitmap != nil {
-			t.Fatal("设备释放后仍持有临时目标")
-		}
-	}
-}
-
-// 大曲面跨过多个遮罩块；渐变以原局部坐标采样，擦除只影响真实覆盖。
+// 大曲面渐变以原局部坐标采样，擦除只影响真实覆盖。
 // 预乘 sRGB/RGBA8，满覆盖渐变点保留既有 ±2 量化预算。
-func TestCoverageTiledGradientAndErase(t *testing.T) {
+func TestCurveGradientAndErase(t *testing.T) {
 	p := newRenderImageTestPainter(t)
 	for _, scale := range []float32{1, 1.5, 2} {
 		transform := geometry.Translate(12.25, 16.5).Rotate(7).Scale(.9, 1.1)
@@ -435,16 +285,16 @@ func TestCoverageTiledGradientAndErase(t *testing.T) {
 				StartColor: graphics.RGBA(255, 0, 0, 64), EndColor: graphics.RGBA(0, 0, 255, 192),
 			})
 			if p.render.GetTransform() != p.matrix || p.render.GetAntialiasMode() != oldAA || !p.clipActive {
-				t.Fatal("覆盖合成泄漏绘图状态")
+				t.Fatal("曲线绘制泄漏绘图状态")
 			}
 			identity := d2d1.Matrix3x2F{M11: 1, M22: 1}
 			if p.linearBrush.GetTransform() != identity {
-				t.Fatal("覆盖合成污染渐变画刷变换")
+				t.Fatal("曲线绘制污染渐变画刷变换")
 			}
 			path := graphics.MoveTo(151, 70).ArcTo(9, 9, 0, 0, 1, 169, 70).ArcTo(9, 9, 0, 0, 1, 151, 70).Close()
 			p.ClearPath(path)
 			if p.render.GetTransform() != p.matrix || p.render.GetAntialiasMode() != oldAA || p.render.GetPrimitiveBlend() != d2d1.D2D1_PRIMITIVE_BLEND_SOURCE_OVER {
-				t.Fatal("覆盖擦除泄漏状态")
+				t.Fatal("曲线擦除泄漏状态")
 			}
 		})
 		if err != nil {
@@ -467,47 +317,6 @@ func TestCoverageTiledGradientAndErase(t *testing.T) {
 				}
 			}
 		}
-	}
-}
-
-func TestCurveCacheOwnershipAndPrecision(t *testing.T) {
-	p := newRenderImageTestPainter(t)
-	p.scale, p.transform = 1, geometry.Identity()
-	p.setEllipse(geometry.Point{X: 12, Y: 12}, 8, 8)
-	first := p.ellipseContour()
-	if first == nil || p.ellipseContour() != first || len(p.curveCache) != 1 {
-		t.Fatal("相同椭圆未复用只读轮廓")
-	}
-	p.transform = geometry.Translate(.5, .5)
-	if p.ellipseContour() != first {
-		t.Fatal("平移不应改变细分精度或缓存身份")
-	}
-	p.scale = 2
-	if second := p.ellipseContour(); second == nil || second == first || len(p.curveCache) != 2 {
-		t.Fatal("不同物理精度复用了旧轮廓")
-	}
-	p.scale = 1
-	p.setRoundRect(graphics.Rect(4, 4, 16, 16), 8)
-	if rounded := p.roundRectContour(); rounded == nil || rounded == first || p.roundRectContour() != rounded {
-		t.Fatal("圆角矩形缓存与椭圆混淆")
-	}
-	// 填满缓存，最近使用的椭圆必须保留；触发淘汰后旧项仍可重新创建。
-	for i := range curveCacheCapacity + 3 {
-		p.setEllipse(geometry.Point{X: float32(i + 40), Y: 12}, 8, 8)
-		if p.ellipseContour() == nil {
-			t.Fatal("无法创建轮廓")
-		}
-		p.setEllipse(geometry.Point{X: 12, Y: 12}, 8, 8)
-		if p.ellipseContour() != first {
-			t.Fatal("淘汰了最近使用的轮廓")
-		}
-	}
-	if len(p.curveCache) != curveCacheCapacity {
-		t.Fatal("轮廓缓存没有遵守容量上限", len(p.curveCache))
-	}
-	p.Destroy()
-	if len(p.curveCache) != 0 {
-		t.Fatal("销毁 Painter 后仍持有原生轮廓")
 	}
 }
 
@@ -815,7 +624,6 @@ func renderTestImage(t *testing.T, scale float32, transform geometry.Transform, 
 	p.render.SetDpi(96*scale, 96*scale)
 	p.render.BeginDraw()
 	p.activeFrame = true
-	p.activeSize = image.Pt(width, height)
 	// Also balance the native frame if an assertion in draw aborts the test.
 	defer func() {
 		if p.activeFrame {
@@ -1176,7 +984,6 @@ func renderAlphaTestImage(t *testing.T, scale float32, transform geometry.Transf
 	p.render.SetDpi(96*scale, 96*scale)
 	p.render.BeginDraw()
 	p.activeFrame = true
-	p.activeSize = image.Pt(width, height)
 	// Also balance the native frame if an assertion in draw aborts the test.
 	defer func() {
 		if p.activeFrame {
