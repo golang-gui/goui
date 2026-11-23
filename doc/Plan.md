@@ -7308,3 +7308,11 @@ error，原样全仓命令报编译失败；恢复其既有尽力而为调用后
   `tests/window/platform/mobile_start` 与 `mobile_surface` 桌面目标缺少 main 阻挡；
   同一命令在修改前基线复现，未计为通过。上述受影响目标构建已通过。
   本轮未执行 macOS 原生、Windows OpenGL、硬件 GPU、真实混合 DPI 或移动端窗口。
+
+### 圆角窗口验证入口
+
+- [x] 扩展既有 `tests/window/graphics/corner_radius`，保留四个原样例，增加
+  24/4/24/4 DIP 圆角；支持 `-light` 及 T 亮暗切换，Space 循环排列。
+- [x] Linux X11 / Xfwm4 的 Software、Mesa llvmpipe OpenGL，以及 Windows 10
+  Direct2D，各 1x 亮暗自动像素／呈现检查通过。Windows 实际操作 Space／T
+  复核新增样例和背景切换，正常关闭；自动运行不代替外观检查。
