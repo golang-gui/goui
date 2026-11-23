@@ -819,3 +819,26 @@ func TestPopoverClippedShadowNativeRounding(t *testing.T) {
 		t.Fatal("原生取整改变主体贴边或引发反复调整尺寸", p.requestedPosition, p.bodyRect(), n.sizes)
 	}
 }
+
+func TestPopoverSidePlacement(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		anchor geometry.Rectangle
+		side   PopoverPlacement
+		body   geometry.Size
+		want   geometry.Point
+	}{
+		{"right", geometry.Rect(100, 60, 20, 20), popoverPlacementRight, geometry.Size{Width: 40, Height: 50}, geometry.Point{X: 120, Y: 60}},
+		{"flip-left", geometry.Rect(180, 60, 20, 20), popoverPlacementRight, geometry.Size{Width: 40, Height: 50}, geometry.Point{X: 140, Y: 60}},
+		{"continue-left", geometry.Rect(100, 60, 20, 20), popoverPlacementLeft, geometry.Size{Width: 40, Height: 50}, geometry.Point{X: 60, Y: 60}},
+		{"flip-right", geometry.Rect(5, 60, 20, 20), popoverPlacementLeft, geometry.Size{Width: 40, Height: 50}, geometry.Point{X: 25, Y: 60}},
+		{"slide-up", geometry.Rect(100, 140, 20, 20), popoverPlacementRight, geometry.Size{Width: 40, Height: 50}, geometry.Point{X: 120, Y: 100}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snapshot := popoverPlacementSnapshot{anchor: tc.anchor, placement: tc.side, workArea: geometry.Rect(0, 0, 200, 150), constrained: true}
+			if got := snapshot.bodyPosition(tc.body); got != tc.want {
+				t.Fatal("侧向退避不符合预期", got, tc.want)
+			}
+		})
+	}
+}

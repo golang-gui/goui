@@ -740,10 +740,17 @@ func (w *surfaceBase) dismissPopovers(event events.Event) bool {
 		if outside && picked != nil && p.anchor != nil && picked.base().isDescendant(picked, p.anchor) {
 			continue
 		}
-		p.RequestDismiss()
 		if escape {
-			event.(events.KeyEvent).PreventDefault()
-			return true
+			e := event.(events.KeyEvent)
+			handled := false
+			e.Handled = &handled
+			_ = p.DispatchEvent(e)
+			if handled {
+				event.(events.KeyEvent).PreventDefault()
+				return true
+			}
+		} else {
+			p.RequestDismiss()
 		}
 		if w.destroyed {
 			return true

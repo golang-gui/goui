@@ -60,6 +60,7 @@ type sharedPopover struct {
 	position           geometry.Point
 	modal, autoDismiss bool
 	tooltip            bool
+	filterEvent        func(events.Event) bool
 	anchorArea         *geometry.Rectangle
 	destroyed          bool
 	slot               *sharedPopoverSlot
@@ -124,7 +125,7 @@ func (p *sharedPopover) SetPlacement(v PopoverPlacement) {
 	if p.destroyed {
 		return
 	}
-	if v != PopoverPlacementBottom {
+	if v != PopoverPlacementBottom && v != popoverPlacementRight && v != popoverPlacementLeft {
 		v = PopoverPlacementPoint
 	}
 	p.placement = v
@@ -199,15 +200,14 @@ func (p *sharedPopover) Destroy() {
 // sharedPopoverSlot arbitrates clients; its ordinary popover is the only Root.
 type sharedPopoverSlot struct {
 	owner                 *surfaceBase
-	host                  *rootBase
 	popup                 *popover
 	current, retained     *sharedPopover
 	revision              uint64
 	transitioning, closed bool
 }
 
-func newSharedPopoverSlot(owner *surfaceBase, host *rootBase, anchor Widget) *sharedPopoverSlot {
-	s := &sharedPopoverSlot{owner: owner, host: host, popup: NewPopover(anchor, &PopoverOptions{Transparent: true}).(*popover)}
+func newSharedPopoverSlot(owner *surfaceBase, anchor Widget) *sharedPopoverSlot {
+	s := &sharedPopoverSlot{owner: owner, popup: NewPopover(anchor, &PopoverOptions{Transparent: true}).(*popover)}
 	s.popup.app = owner.app
 	// Register before the cached root can be borrowed. Internal identity is
 	// cleared before any client or occurrence-level closing callback can reenter.
@@ -243,7 +243,7 @@ func (p *sharedPopover) Show() error {
 		return fmt.Errorf("shared popover: owner is unavailable")
 	}
 	host := p.anchor.Root().(interface{ rootState() *rootBase }).rootState()
-	if parent, ok := p.anchor.Root().(*popover); ok && (!parent.visible || parent.destroyed || parent.hiding) {
+	if parent, ok := p.anchor.Root().(*popover); ok && (!parent.visible || parent.destroyed || parent.hiding || parent.releasing || parent.mutationDepth != 0) {
 		return fmt.Errorf("shared popover: presentation host is unavailable")
 	}
 	if host.shared != nil && host.shared.owner != core {
@@ -251,7 +251,7 @@ func (p *sharedPopover) Show() error {
 		host.shared = nil
 	}
 	if host.shared == nil {
-		host.shared = newSharedPopoverSlot(core, host, p.anchor)
+		host.shared = newSharedPopoverSlot(core, p.anchor)
 	}
 	s := host.shared
 	if s.closed || s.transitioning || s.popup.transitioning() {
@@ -300,6 +300,7 @@ func (p *sharedPopover) Show() error {
 		})
 	}
 	popup := s.popup
+	popup.filterEvent = p.filterEvent
 	popup.SetAnchor(p.anchor)
 	popup.anchorArea = p.anchorArea
 	popup.SetStyleName(p.styleName)
@@ -363,6 +364,7 @@ func (s *sharedPopoverSlot) evict(p *sharedPopover) {
 		p.unmount.Disconnect()
 		p.unmount = nil
 	}
+	s.popup.filterEvent = nil
 	s.popup.SetWidget(nil)
 	s.popup.SetAnchor(nil)
 }

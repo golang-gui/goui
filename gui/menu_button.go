@@ -172,6 +172,7 @@ func (b *MenuButton) showMenu(source menuOpenSource) error {
 	if b.pm == nil {
 		b.pm = NewPopoverMenu(b)
 		b.pm.SetModal(false)
+		b.pm.ConnectError(func(err error) { b.openError.Emit(err, b.revision) })
 		b.pm.ConnectClosed(func() {
 			b.revision++
 			if !b.Opened() {
@@ -337,7 +338,7 @@ func (b *MenuButton) menuKey(ctx EventContext, event events.KeyEvent) {
 		return
 	}
 	switch event.Key {
-	case events.KeyArrowDown, events.KeyArrowUp, events.KeyHome, events.KeyEnd, events.KeyEnter, events.KeySpace, events.KeyArrowLeft, events.KeyArrowRight:
+	case events.KeyArrowDown, events.KeyArrowUp, events.KeyHome, events.KeyEnd, events.KeyEnter, events.KeySpace, events.KeyArrowLeft, events.KeyArrowRight, events.KeyEscape:
 	default:
 		return
 	}

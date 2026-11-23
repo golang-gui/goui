@@ -624,3 +624,43 @@ func testSharedCore(p SharedPopover) *popover {
 	}
 	return &popover{}
 }
+
+func TestNestedSharedPopoverCloseCanReplaceParentContent(t *testing.T) {
+	_, _, newPopup := transientFixture(t)
+	p := newPopup(nil)
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	child := NewSharedPopover(p.Widget())
+	child.SetWidget(newTestWidget())
+	if err := child.Show(); err != nil {
+		t.Fatal(err)
+	}
+	old := p.Widget()
+	latest := newTestWidget()
+	obsolete := newTestWidget()
+	child.ConnectClosed(func() { p.SetWidget(latest) })
+	p.SetWidget(obsolete)
+	if p.Widget() != latest || latest.Root() == nil || old.Root() != nil || obsolete.Root() != nil {
+		t.Fatal("旧内容替换覆盖了关闭回调的新内容")
+	}
+}
+
+func TestOwnerDestroyReleasesOrdinaryPopoverChildCache(t *testing.T) {
+	w, _, makePopup := transientFixture(t)
+	p := NewPopover(makePopup(nil).anchor, nil).(*popover)
+	p.SetWidget(newTestWidget())
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	child := NewSharedPopover(p.Widget()).(*sharedPopover)
+	child.SetWidget(newTestWidget())
+	if err := child.Show(); err != nil {
+		t.Fatal(err)
+	}
+	slot := p.shared
+	w.Destroy()
+	if !slot.closed || !slot.popup.destroyed || child.slot != nil || child.Visible() {
+		t.Fatal("原生所有者销毁没有释放普通弹层持有的子缓存")
+	}
+}

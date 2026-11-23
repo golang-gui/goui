@@ -248,6 +248,8 @@ func builtInRules(options Options) []style.Rule {
 		text("menu").BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(8).
 			Shadow(style.Shadow{Color: color.NRGBA{A: 46}, Offset: geometry.Point{Y: 4}, BlurRadius: 16}),
 		style.Name("menu-item").BackgroundColor(color.Transparent).Radius(4),
+		style.Name("menu-item").Part("submenu").ForegroundColor(p.text),
+		style.Name("menu-item").Part("submenu").State(style.Disabled).ForegroundColor(p.disabled),
 		style.Name("menu-item").Part("indicator").ForegroundColor(p.text),
 		style.Name("menu-item").Part("indicator").State(style.Disabled).ForegroundColor(p.disabled),
 		text("menu-item-text"),

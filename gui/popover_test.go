@@ -463,7 +463,8 @@ func TestPopoverModelessDismissalAndExplicitKeys(t *testing.T) {
 	if err := w.DispatchEvent(e); err != nil {
 		t.Fatal(err)
 	}
-	if p.Visible() || dismissed != 2 || !handled {
+	// AutoDismiss 的 Esc 现在先交给内容，未处理才请求关闭。
+	if p.Visible() || dismissed != 2 || !handled || keys != 2 {
 		t.Fatal("Esc 没有关闭并消费")
 	}
 	p.SetAutoDismiss(false)
@@ -472,7 +473,7 @@ func TestPopoverModelessDismissalAndExplicitKeys(t *testing.T) {
 	if err := w.DispatchEvent(shortcutPress(events.KeyEscape, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if !p.Visible() || dismissed != 2 || keys != 2 {
+	if !p.Visible() || dismissed != 2 || keys != 3 {
 		t.Fatal("持久模态面的 Esc 没有交给内容", keys, dismissed)
 	}
 	p.SetAutoDismiss(true)
@@ -1382,5 +1383,30 @@ func TestVisiblePopoverStyleUpdateResizesRetainedResources(t *testing.T) {
 	if output.Len() != 0 || !client.Visible() || p.platformPopup != native || p.painter != painter || len(plat.natives) != 1 ||
 		p.requestedSize != (geometry.Size{Width: 80, Height: 40}) || content.Rect().Size != p.bodyRect().Size {
 		t.Fatal("可见样式更新未重新布局，或改变了资源归属", output)
+	}
+}
+
+func TestPopoverEscapeContentPrecedesDismissal(t *testing.T) {
+	p, _, _, _ := placementFixture(t, geometry.Rect(0, 0, 1000, 800))
+	p.SetModal(true)
+	p.SetAutoDismiss(true)
+	controller := NewKeyEventController()
+	controller.ConnectKeyDown(func(ctx EventContext, e events.KeyEvent) {
+		if e.Key == events.KeyEscape {
+			e.PreventDefault()
+			ctx.StopPropagation()
+		}
+	})
+	p.Widget().AddEventController(controller)
+	dismissals := 0
+	p.ConnectDismissRequest(func() { dismissals++; p.Hide() })
+	if err := p.Show(); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.DispatchEvent(shortcutPress(events.KeyEscape, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if !p.Visible() || dismissals != 0 {
+		t.Fatal("内容已处理 Esc，仍触发默认关闭")
 	}
 }

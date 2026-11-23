@@ -26,6 +26,8 @@ const (
 	// PopoverPlacementBottom prefers the bottom-left of the complete anchor
 	// rectangle. It may align right, flip above, or slide into the work area.
 	PopoverPlacementBottom
+	popoverPlacementRight
+	popoverPlacementLeft
 )
 
 // Popover is a borderless, no-focus floating surface anchored to a Widget, used
@@ -157,6 +159,7 @@ type popover struct {
 	destroyed                 bool
 	visible                   bool
 	modal                     bool
+	filterEvent               func(events.Event) bool
 	autoDismiss               bool // requests closing independently of modal input ownership
 
 	dismissRequest signal.Signal0
@@ -247,13 +250,13 @@ func (p *popover) SetWidget(widget Widget) {
 			owner.finishDestroy()
 		}
 	}()
+	previous := p.widget
 	if p.shared != nil {
 		p.shared.closeClient(p.shared.current)
 	}
-	if p.destroyed || p.widget == widget {
+	if p.destroyed || p.widget != previous || owner != nil && owner.destroyed {
 		return
 	}
-	previous := p.widget
 	p.widget = widget
 	if previous != nil {
 		previous.base().detachRoot(previous)
@@ -278,7 +281,7 @@ func (p *popover) SetWidget(widget Widget) {
 }
 
 func (p *popover) SetPlacement(placement PopoverPlacement) {
-	if placement != PopoverPlacementBottom {
+	if placement != PopoverPlacementBottom && placement != popoverPlacementRight && placement != popoverPlacementLeft {
 		placement = PopoverPlacementPoint
 	}
 	if p.destroyed || p.placement == placement {
@@ -335,6 +338,11 @@ func (p *popover) resignModalTarget() {
 // DispatchEvent routes an event the owner window forwards (keyboard nav, since
 // the popover has no native focus) to the popover's content. Part of ModalTarget.
 func (p *popover) DispatchEvent(event events.Event) error {
+	if e, ok := event.(events.KeyEvent); ok && e.Handled == nil {
+		handled := false
+		e.Handled = &handled
+		event = e
+	}
 	if _, ok := event.(events.DestroyEvent); ok {
 		p.releaseNative()
 		return nil
@@ -381,6 +389,9 @@ func (p *popover) DispatchEvent(event events.Event) error {
 		p.dispatchDragData(p, e)
 		return nil
 	}
+	if p.filterEvent != nil && p.filterEvent(event) {
+		return nil
+	}
 	if p.autoDismiss {
 		switch e := event.(type) {
 		case events.PointerEvent:
@@ -391,14 +402,15 @@ func (p *popover) DispatchEvent(event events.Event) error {
 				p.RequestDismiss()
 				return nil
 			}
-		case events.KeyEvent:
-			if e.EventType == events.KeyDown && e.Key == events.KeyEscape {
-				p.RequestDismiss()
-				return nil
-			}
 		}
 	}
-	return p.dispatcher.DispatchEvent(p, event)
+	epoch := p.lifecycle
+	err := p.dispatcher.DispatchEvent(p, event)
+	if e, ok := event.(events.KeyEvent); ok && e.EventType == events.KeyDown && e.Key == events.KeyEscape && p.autoDismiss && p.visible && p.lifecycle == epoch && (e.Handled == nil || !*e.Handled) {
+		p.RequestDismiss()
+		e.PreventDefault()
+	}
+	return err
 }
 
 // RequestDismiss asks the controller to close an active AutoDismiss surface.
@@ -745,10 +757,15 @@ func (p *popover) releaseNative() {
 	}
 	p.releasePending = false
 	p.releasing = true
-	if p.shared != nil {
-		p.shared.closeClient(p.shared.current)
-	}
 	owner := surfaceCore(p.owner)
+	if p.shared != nil {
+		if p.destroyed || owner != nil && owner.destroyed {
+			p.shared.destroy()
+			p.shared = nil
+		} else {
+			p.shared.closeClient(p.shared.current)
+		}
+	}
 	defer func() {
 		p.releasing = false
 		if owner != nil {
@@ -937,7 +954,7 @@ func (p *popover) queryPlacement() (popoverPlacementSnapshot, error) {
 	}
 	snapshot := popoverPlacementSnapshot{anchor: geometry.Rect(origin.X+p.position.X, origin.Y+p.position.Y, 0, 0), placement: p.placement}
 	point := snapshot.anchor.Pos
-	if snapshot.placement == PopoverPlacementBottom && p.anchor != nil {
+	if snapshot.placement != PopoverPlacementPoint && p.anchor != nil {
 		snapshot.anchor = geometry.Rectangle{Pos: origin, Size: p.anchor.Rect().Size}
 		if p.anchorArea != nil {
 			snapshot.anchor = *p.anchorArea
@@ -1292,6 +1309,24 @@ func (s popoverPlacementSnapshot) position(surface geometry.Size, insets popover
 func (s popoverPlacementSnapshot) bodyPosition(body geometry.Size) geometry.Point {
 	a := s.anchor
 	preferred := a.Pos
+	if s.placement == popoverPlacementRight || s.placement == popoverPlacementLeft {
+		right, left := a.X+a.Width, a.X-body.Width
+		preferred.X = right
+		if s.placement == popoverPlacementLeft {
+			preferred.X = left
+		}
+		if s.constrained {
+			area := s.workArea
+			fitsX := func(x float32) bool { return x >= area.X && x+body.Width <= area.X+area.Width }
+			other := left
+			if s.placement == popoverPlacementLeft {
+				other = right
+			}
+			if !fitsX(preferred.X) && (fitsX(other) || min(other+body.Width, area.X+area.Width)-max(other, area.X) > min(preferred.X+body.Width, area.X+area.Width)-max(preferred.X, area.X)) {
+				preferred.X = other
+			}
+		}
+	}
 	if s.placement == PopoverPlacementBottom {
 		preferred.Y += a.Height
 	}
@@ -1419,5 +1454,5 @@ func (p *popover) watchAnchor() {
 }
 
 func (p *popover) transitioning() bool {
-	return p.showing || p.hiding || p.releasing || p.framePainting || p.paintDepth != 0 || p.mutationDepth != 0
+	return p.showing || p.hiding || p.releasing || p.framePainting || p.paintDepth != 0 || p.mutationDepth != 0 || p.shared != nil && p.shared.transitioning
 }
