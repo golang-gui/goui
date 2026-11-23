@@ -361,3 +361,101 @@ func TestMenuCommandRefNotificationCanUnmountOwner(t *testing.T) {
 		t.Fatal("换目标通知没有安全卸载或影响了外部所有权")
 	}
 }
+
+func TestMenuSubmenuDeclarationsAndLatestActions(t *testing.T) {
+	root := newRoot()
+	called := 0
+	view := func(value int) *MenuButtonView {
+		return MenuButton("File").Menu(MenuItem("Recent").Submenu(nil, MenuItem("More").Submenu(MenuItem("Open", func() { called = value }))))
+	}
+	button := root.update(view(1)).(*gui.MenuButton)
+	model := button.Menu()
+	child := model.ItemAt(0).Submenu()
+	grand := child.ItemAt(0).Submenu()
+	if grand == nil || grand.ItemsCount() != 1 {
+		t.Fatal("嵌套声明未生成子模型")
+	}
+	root.update(view(2))
+	if button.Menu() != model || model.ItemAt(0).Submenu() != child || child.ItemAt(0).Submenu() != grand {
+		t.Fatal("无结构变化时重建了递归模型")
+	}
+	grand.ItemAt(0).Action()()
+	if called != 2 {
+		t.Fatal("子项动作闭包未读取最新声明")
+	}
+	root.update(MenuButton("File").Menu(MenuItem("Recent").Submenu()))
+	branch := button.Menu().ItemAt(0)
+	if branch.Submenu() == nil || branch.Submenu().ItemsCount() != 0 || branch.Action() != nil {
+		t.Fatal("空 Submenu 未保留分支身份")
+	}
+	if Menu(MenuItem("Leaf", func() {}).Submenu(nil)).ItemAt(0).Action() != nil {
+		t.Fatal("空分支保留了旧动作")
+	}
+}
+
+func TestMenuSubmenuCommandRefsAndCycles(t *testing.T) {
+	root := newRoot()
+	first, second := gui.NewCommand(), gui.NewCommand()
+	view := func(c *gui.Command) *MenuButtonView {
+		return MenuButton("Menu").Menu(MenuItem("Parent").Submenu(MenuItem("Run").CommandRef(c)))
+	}
+	button := root.update(view(first)).(*gui.MenuButton)
+	model := button.Menu()
+	root.update(view(second))
+	if button.Menu() != model || model.ItemAt(0).Submenu().ItemAt(0).Command() != second {
+		t.Fatal("嵌套借用命令未原位替换")
+	}
+	temp := MenuFor(nil, MenuItem("Parent").Submenu(MenuItem("Missing").Command("missing")))
+	if temp.ItemAt(0).Submenu().ItemAt(0).Command().Enabled() {
+		t.Fatal("缺失命令在子菜单中仍启用")
+	}
+	entry := MenuItem("Cycle")
+	entry.Submenu(entry)
+	defer func() {
+		if recover() == nil {
+			t.Fatal("循环声明未被拒绝")
+		}
+	}()
+	Menu(entry)
+}
+
+func TestMenuSubmenuDefinesCommandsInHostScope(t *testing.T) {
+	root := newRoot()
+	calls := 0
+	build := func(value int) View {
+		return CommandScope(MenuButton("Menu").ID("menu").Menu(MenuItem("Branch").Submenu(
+			MenuItem("One").DefineCommand(Command("one").OnActivate(func() { calls = value })),
+			MenuItem("Two").DefineCommand(Command("two").OnActivate(func() { calls = value + 1 })),
+			MenuItem("Three").DefineCommand(Command("three").OnActivate(func() { calls = value + 2 })),
+		)))
+	}
+	button := root.update(build(10)).(*gui.MenuButton)
+	model := button.Menu()
+	child := model.ItemAt(0).Submenu()
+	commands := []*gui.Command{child.ItemAt(0).Command(), child.ItemAt(1).Command(), child.ItemAt(2).Command()}
+	for i, c := range commands {
+		if c == nil || !c.Enabled() {
+			t.Fatal("深层命令未加入宿主范围", i)
+		}
+	}
+	root.update(build(20))
+	if button.Menu() != model {
+		t.Fatal("仅命令回调刷新重建了菜单")
+	}
+	for i, c := range commands {
+		c.Activate()
+		if calls != 20+i {
+			t.Fatal("深层命令使用了旧回调", i, calls)
+		}
+	}
+	root.unmountHost()
+	for _, c := range commands {
+		if c.Enabled() {
+			t.Fatal("卸载后深层命令仍启用")
+		}
+		c.Activate()
+	}
+	if calls != 22 {
+		t.Fatal("卸载后仍可执行命令")
+	}
+}
