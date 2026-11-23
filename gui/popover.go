@@ -247,6 +247,12 @@ func (p *popover) SetWidget(widget Widget) {
 			owner.finishDestroy()
 		}
 	}()
+	if p.shared != nil {
+		p.shared.closeClient(p.shared.current)
+	}
+	if p.destroyed || p.widget == widget {
+		return
+	}
 	previous := p.widget
 	p.widget = widget
 	if previous != nil {
@@ -527,7 +533,13 @@ func (p *popover) Show() error {
 }
 
 func (p *popover) Hide() {
+	if p.hiding {
+		return
+	}
 	p.hiding = true
+	if p.shared != nil {
+		p.shared.closeClient(p.shared.current)
+	}
 	cleanupOwner := surfaceCore(p.owner)
 	defer func() {
 		p.hiding = false
@@ -574,6 +586,9 @@ func (p *popover) Destroy() {
 		return
 	}
 	p.destroyed = true
+	if p.shared != nil {
+		p.shared.destroy()
+	}
 	p.destroyFrames()
 	p.releaseNative()
 }
@@ -730,6 +745,9 @@ func (p *popover) releaseNative() {
 	}
 	p.releasePending = false
 	p.releasing = true
+	if p.shared != nil {
+		p.shared.closeClient(p.shared.current)
+	}
 	owner := surfaceCore(p.owner)
 	defer func() {
 		p.releasing = false

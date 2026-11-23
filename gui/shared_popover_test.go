@@ -211,15 +211,46 @@ func TestSharedPopoverTargetClosedReentry(t *testing.T) {
 	}
 }
 
-func TestSharedPopoverRejectsAnchorInReplacedTree(t *testing.T) {
-	_, _, newPopup := transientFixture(t)
+func TestSharedPopoverNestedHostsReuseAndClose(t *testing.T) {
+	w, plat, newPopup := transientFixture(t)
 	p := newPopup(nil)
 	if err := p.Show(); err != nil {
 		t.Fatal(err)
 	}
-	nested := NewSharedPopover(p.Widget())
-	if err := nested.Show(); err == nil || !p.Visible() {
-		t.Fatal("替换卸载了新弹层自己的 anchor")
+	child := NewSharedPopover(p.Widget())
+	child.SetWidget(newTestWidget())
+	if err := child.Show(); err != nil {
+		t.Fatal(err)
+	}
+	grandchild := NewSharedPopover(child.Widget())
+	grandchild.SetWidget(newTestWidget())
+	if err := grandchild.Show(); err != nil {
+		t.Fatal(err)
+	}
+	if !p.Visible() || !child.Visible() || !grandchild.Visible() || len(plat.natives) != 3 {
+		t.Fatal("父子层未独立显示")
+	}
+	p.Hide()
+	if child.Visible() || grandchild.Visible() {
+		t.Fatal("父层隐藏后子层仍显示")
+	}
+	for _, popup := range []SharedPopover{p, child, grandchild} {
+		if err := popup.Show(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(plat.natives) != 3 || len(plat.painters) != 3 {
+		t.Fatal("重开菜单链重新分配了原生资源")
+	}
+	child.Destroy()
+	if !p.Visible() || grandchild.Visible() {
+		t.Fatal("销毁子客户端未隔离父层或未关闭后代")
+	}
+	w.Destroy()
+	for _, native := range plat.natives {
+		if !native.destroyed {
+			t.Fatal("宿主销毁未释放整条缓存链")
+		}
 	}
 }
 

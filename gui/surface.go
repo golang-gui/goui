@@ -98,7 +98,6 @@ type surfaceBase struct {
 	host           Surface
 	claimed        bool
 	visible        bool
-	shared         *sharedPopoverSlot
 	ownedPopovers  map[*popover]struct{}
 	tooltip        tooltipState
 	id             string

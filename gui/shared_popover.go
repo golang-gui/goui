@@ -14,7 +14,7 @@ import (
 // It is a canceled request, rather than a native popup failure.
 var ErrPopoverSuperseded = errors.New("popover: show request superseded")
 
-// SharedPopover configures one reusable client of its anchor Surface's cache.
+// SharedPopover configures one reusable client of its anchor presentation host's cache.
 // It is not a Root and owns no native resources. All methods use the GUI thread.
 type SharedPopover interface {
 	Anchor() Widget
@@ -40,16 +40,16 @@ type SharedPopover interface {
 	CommitText(string) error
 	// Show replaces the current shared client. A later operation supersedes it.
 	Show() error
-	// Hide retains the Surface's popover and at most one mounted content tree.
+	// Hide retains the host's popover and at most one mounted content tree.
 	Hide()
-	// Destroy releases this client, never the Surface's cached popover.
+	// Destroy releases this client, never the host's cached popover.
 	Destroy()
 	ConnectDismissRequest(func()) signal.Handle
 	ConnectClosed(func()) signal.Handle
 }
 
 // NewSharedPopover creates a lightweight, independent client. The anchor may be
-// unmounted until Show, which selects its current Surface's shared cache.
+// unmounted until Show, which selects its current presentation host's shared cache.
 func NewSharedPopover(anchor Widget) SharedPopover { return &sharedPopover{anchor: anchor} }
 
 type sharedPopover struct {
@@ -199,14 +199,15 @@ func (p *sharedPopover) Destroy() {
 // sharedPopoverSlot arbitrates clients; its ordinary popover is the only Root.
 type sharedPopoverSlot struct {
 	owner                 *surfaceBase
+	host                  *rootBase
 	popup                 *popover
 	current, retained     *sharedPopover
 	revision              uint64
 	transitioning, closed bool
 }
 
-func newSharedPopoverSlot(owner *surfaceBase, anchor Widget) *sharedPopoverSlot {
-	s := &sharedPopoverSlot{owner: owner, popup: NewPopover(anchor, &PopoverOptions{Transparent: true}).(*popover)}
+func newSharedPopoverSlot(owner *surfaceBase, host *rootBase, anchor Widget) *sharedPopoverSlot {
+	s := &sharedPopoverSlot{owner: owner, host: host, popup: NewPopover(anchor, &PopoverOptions{Transparent: true}).(*popover)}
 	s.popup.app = owner.app
 	// Register before the cached root can be borrowed. Internal identity is
 	// cleared before any client or occurrence-level closing callback can reenter.
@@ -241,10 +242,18 @@ func (p *sharedPopover) Show() error {
 	if core == nil || core.destroyed {
 		return fmt.Errorf("shared popover: owner is unavailable")
 	}
-	if core.shared == nil {
-		core.shared = newSharedPopoverSlot(core, p.anchor)
+	host := p.anchor.Root().(interface{ rootState() *rootBase }).rootState()
+	if parent, ok := p.anchor.Root().(*popover); ok && (!parent.visible || parent.destroyed || parent.hiding) {
+		return fmt.Errorf("shared popover: presentation host is unavailable")
 	}
-	s := core.shared
+	if host.shared != nil && host.shared.owner != core {
+		host.shared.destroy()
+		host.shared = nil
+	}
+	if host.shared == nil {
+		host.shared = newSharedPopoverSlot(core, host, p.anchor)
+	}
+	s := host.shared
 	if s.closed || s.transitioning || s.popup.transitioning() {
 		return fmt.Errorf("shared popover: host transition in progress")
 	}
