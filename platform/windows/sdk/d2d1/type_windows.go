@@ -457,8 +457,9 @@ type InterpolationMode uint32
 type CompositeMode uint32
 
 const (
-	D2D1_INTERPOLATION_MODE_LINEAR  InterpolationMode = 1
-	D2D1_COMPOSITE_MODE_SOURCE_OVER CompositeMode     = 0
+	D2D1_INTERPOLATION_MODE_LINEAR      InterpolationMode = 1
+	D2D1_COMPOSITE_MODE_SOURCE_OVER     CompositeMode     = 0
+	D2D1_COMPOSITE_MODE_DESTINATION_OUT CompositeMode     = 5
 )
 
 const D2DERR_RECREATE_TARGET int32 = -2003238900 // 0x8899000C

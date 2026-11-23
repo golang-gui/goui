@@ -1,6 +1,7 @@
 package direct2d
 
 import (
+	"encoding/binary"
 	"fmt"
 	"image"
 	"math"
@@ -40,6 +41,8 @@ type Painter struct {
 	shadowClock  uint64
 	curveCache   []curveCacheEntry
 	curveClock   uint64
+	coverage     geometryCoverage
+	pathKey      []byte
 
 	colorBrush           *d2d1.SolidColorBrush
 	color                d2d1.ColorF
@@ -62,6 +65,7 @@ type Painter struct {
 	matrix               d2d1.Matrix3x2F
 	frameID              uint64
 	activeFrame          bool
+	activeSize           image.Point
 	deferredFrame        bool
 	occluded             bool
 	swapChainFlags       uint32
@@ -363,6 +367,7 @@ func (p *Painter) Destroy() {
 		p.curveCache[i].contour.Release()
 	}
 	p.curveCache = nil
+	p.pathKey = nil
 	if p.factory != nil {
 		p.factory.Release()
 		p.factory = nil
@@ -370,6 +375,7 @@ func (p *Painter) Destroy() {
 }
 
 func (p *Painter) releaseDeviceResources() {
+	p.coverage.release()
 	p.releaseComposition()
 	p.activeFrame = false
 	p.clipActive = false
@@ -639,6 +645,7 @@ func (p *Painter) Begin(width, height, scale float32) {
 	p.render.BeginDraw()
 	p.scale = scale
 	p.activeFrame = true
+	p.activeSize = image.Pt(int(w), int(h))
 	// Reset transform to identity at the start of each frame.
 	p.SetTransform(geometry.Identity())
 }
@@ -762,7 +769,11 @@ func (p *Painter) fillShadowContour(target *d2d1.DeviceContext, rect graphics.Re
 		return false
 	}
 	defer contour.Release()
-	target.FillGeometry(contour, brush, nil)
+	if target == p.render {
+		p.fillGeometry(contour, brush, 0, false)
+	} else {
+		target.FillGeometry(contour, brush, nil)
+	}
 	return true
 }
 
@@ -901,7 +912,7 @@ func (p *Painter) FillEllipse(center graphics.Point, xRadius, yRadius float32, b
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		p.setEllipse(center, xRadius, yRadius)
 		if contour := p.ellipseContour(); contour != nil {
-			p.render.FillGeometry(contour, d2dBrush, nil)
+			p.fillGeometry(contour, d2dBrush, 0, false)
 		}
 	}
 }
@@ -914,7 +925,7 @@ func (p *Painter) FillPath(path graphics.Path, brush graphics.Brush) {
 		geometry, err := p.createPathGeometry(path, true, d2d1.D2D1_FILL_MODE_ALTERNATE)
 		if err == nil {
 			defer geometry.Release()
-			p.render.FillGeometry(geometry, d2dBrush, nil)
+			p.fillGeometry(geometry, d2dBrush, 0, false)
 		}
 	}
 }
@@ -937,6 +948,9 @@ func (p *Painter) ClearPath(path graphics.Path) {
 		return
 	}
 	defer geometry.Release()
+	if p.isCurved(geometry) && p.drawCoverage(geometry, nil, 0, true) {
+		return
+	}
 	brush := p.setColorBrush(graphics.Color{})
 	previous := p.render.GetPrimitiveBlend()
 	p.render.SetPrimitiveBlend(d2d1.D2D1_PRIMITIVE_BLEND_COPY)
@@ -967,39 +981,39 @@ func (p *Painter) DrawRect(rect graphics.Rectangle, strokeWidth float32, brush g
 }
 
 func (p *Painter) DrawRoundRect(rect graphics.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
-	if !p.activeFrame {
+	if !p.activeFrame || strokeWidth <= 0 {
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		rect = pixelsnap.StrokeRect(rect, strokeWidth, p.transform, p.scale)
 		p.setRoundRect(rect, radius)
 		if contour := p.roundRectContour(); contour != nil {
-			p.render.DrawGeometry(contour, d2dBrush, strokeWidth, nil)
+			p.fillGeometry(contour, d2dBrush, strokeWidth, false)
 		}
 	}
 }
 
 func (p *Painter) DrawEllipse(center graphics.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush) {
-	if !p.activeFrame {
+	if !p.activeFrame || strokeWidth <= 0 {
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		p.setEllipse(center, xRadius, yRadius)
 		if contour := p.ellipseContour(); contour != nil {
-			p.render.DrawGeometry(contour, d2dBrush, strokeWidth, nil)
+			p.fillGeometry(contour, d2dBrush, strokeWidth, false)
 		}
 	}
 }
 
 func (p *Painter) DrawPath(path graphics.Path, strokeWidth float32, brush graphics.Brush) {
-	if !p.activeFrame {
+	if !p.activeFrame || strokeWidth <= 0 {
 		return
 	}
 	if d2dBrush := p.setBrush(brush); d2dBrush != nil {
 		geometry, err := p.createPathGeometry(path, false, d2d1.D2D1_FILL_MODE_ALTERNATE)
 		if err == nil {
 			defer geometry.Release()
-			p.render.DrawGeometry(geometry, d2dBrush, strokeWidth, nil)
+			p.fillGeometry(geometry, d2dBrush, strokeWidth, false)
 		}
 	}
 }
@@ -1101,6 +1115,24 @@ func (p *Painter) SetClipRect(rect graphics.Rectangle) {
 }
 
 func (p *Painter) createPathGeometry(path graphics.Path, fill bool, mode d2d1.FillMode) (geometry *d2d1.Geometry, err error) {
+	p.pathKey = p.pathKey[:0]
+	curved := false
+	path.Range(func(op graphics.PathOperation, args []float32) bool {
+		curved = curved || op == graphics.PathArcTo || op == graphics.PathBezierTo
+		p.pathKey = binary.LittleEndian.AppendUint32(p.pathKey, uint32(op))
+		for _, value := range args {
+			p.pathKey = binary.LittleEndian.AppendUint32(p.pathKey, math.Float32bits(value))
+		}
+		return false
+	})
+	var key curveCacheKey
+	if curved {
+		key = curveCacheKey{Path: string(p.pathKey), Fill: fill, Mode: mode, Tolerance: p.curveTolerance()}
+		if contour := p.cachedCurve(key); contour != nil {
+			contour.AddRef()
+			return contour, nil
+		}
+	}
 	pathGeometry, hr := p.factory.CreatePathGeometry()
 	if hr.Failed() {
 		return nil, fmt.Errorf("create d2d path geometry: %v", hr)
@@ -1122,7 +1154,7 @@ func (p *Painter) createPathGeometry(path graphics.Path, fill bool, mode d2d1.Fi
 	if fill {
 		begFigure = d2d1.D2D1_FIGURE_BEGIN_FILLED
 	}
-	figureOpen, curved := false, false
+	figureOpen := false
 
 	var (
 		arc    d2d1.ArcSegment
@@ -1171,17 +1203,19 @@ func (p *Painter) createPathGeometry(path graphics.Path, fill bool, mode d2d1.Fi
 			return nil, err
 		}
 		pathGeometry.Release()
+		geometry.AddRef()
+		p.cacheCurve(key, geometry)
 		return geometry, nil
 	}
 
 	return &pathGeometry.Geometry, nil
 }
 
-// Keep curve approximation below 1/256 physical pixel, including DPI and the
-// largest stretch of the current transform. Native AA still rasterizes the
-// resulting contour; no intermediate bitmap or extra compositing is involved.
+// Keep approximation below 1/256 of a coverage sample, including DPI and the
+// largest stretch of the current transform. The same immutable contour is used
+// by native fallback rendering and the device-pixel coverage sampler.
 func (p *Painter) curveTolerance() float32 {
-	const flatness float32 = 1.0 / 256
+	const flatness float32 = 1.0 / (256 * coverageSamples)
 	scale := p.scale * p.transform.MaxScale()
 	if scale > 0 && !math.IsInf(float64(scale), 0) {
 		return flatness / scale
@@ -1254,6 +1288,9 @@ type curveCacheKey struct {
 	Ellipse   d2d1.Ellipse
 	RoundRect d2d1.RoundRect
 	Tolerance float32
+	Path      string
+	Fill      bool
+	Mode      d2d1.FillMode
 }
 
 type curveCacheEntry struct {
@@ -1297,8 +1334,32 @@ func (p *Painter) fillRoundRect(target *d2d1.DeviceContext, brush *d2d1.Brush) b
 	if contour == nil {
 		return false
 	}
-	target.FillGeometry(contour, brush, nil)
+	if target == p.render {
+		p.fillGeometry(contour, brush, 0, false)
+	} else {
+		target.FillGeometry(contour, brush, nil)
+	}
 	return true
+}
+
+func (p *Painter) isCurved(contour *d2d1.Geometry) bool {
+	for i := range p.curveCache {
+		if p.curveCache[i].contour == contour {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Painter) fillGeometry(contour *d2d1.Geometry, brush *d2d1.Brush, width float32, erase bool) {
+	if p.isCurved(contour) && p.drawCoverage(contour, brush, width, erase) {
+		return
+	}
+	if width > 0 {
+		p.render.DrawGeometry(contour, brush, width, nil)
+	} else {
+		p.render.FillGeometry(contour, brush, nil)
+	}
 }
 
 func (p *Painter) setBrush(brush graphics.Brush) *d2d1.Brush {
@@ -1580,6 +1641,7 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 	}
 	defer target.Release()
 	oldScale, oldTransform, oldMatrix, oldClip := p.scale, p.transform, p.matrix, p.clip
+	oldSize := p.activeSize
 	dpiX, dpiY := p.render.GetDpi()
 	textMode := p.render.GetTextAntialiasMode()
 	nativeTransform := p.render.GetTransform()
@@ -1589,6 +1651,7 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 	p.render.BeginDraw()
 	p.frameID++
 	p.activeFrame, p.scale = true, scale
+	p.activeSize = image.Pt(width, height)
 	defer func() {
 		if p.activeFrame {
 			p.SetClipRect(graphics.Rectangle{})
@@ -1601,6 +1664,7 @@ func (p *Painter) RenderImage(width, height int, scale float32, draw func()) (im
 		p.render.SetTextAntialiasMode(textMode)
 		p.render.SetTransform(&nativeTransform)
 		p.scale, p.transform, p.matrix, p.clip = oldScale, oldTransform, oldMatrix, oldClip
+		p.activeSize = oldSize
 	}()
 	p.SetTransform(geometry.Identity())
 	p.Clear(graphics.Color{})
