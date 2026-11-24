@@ -123,6 +123,8 @@ type surfaceBase struct {
 	popovers       []*popover  // currently shown surfaces; lifecycle stays with each popover
 	destroy        signal.Signal0
 	focusChanged   signal.Signal1[bool]
+
+	shortcutChanges signal.Signal0
 }
 
 func (w *surfaceBase) owner() Surface {
@@ -488,6 +490,14 @@ func (w *surfaceBase) DispatchEvent(event events.Event) error {
 	if w.destroyed {
 		return nil
 	}
+	switch e := event.(type) {
+	case events.MenuEvent:
+		if host := w.managed(); host != nil && host.menuBar != nil {
+			host.menuBar.dispatchMenu(e)
+		}
+		return nil
+	}
+
 	if modalRootBlocked(w.owner()) {
 		switch e := event.(type) {
 		case events.KeyEvent:
@@ -647,6 +657,7 @@ func (w *surfaceBase) DispatchEvent(event events.Event) error {
 func (w *surfaceBase) Shortcuts() *ShortcutController {
 	if w.dispatcher.shortcuts == nil {
 		w.dispatcher.shortcuts = NewShortcutController()
+		w.dispatcher.shortcuts.changed.Connect(w.shortcutChanges.Emit)
 		w.dispatcher.shortcuts.destroyed = w.destroyed
 	}
 	return w.dispatcher.shortcuts
@@ -690,6 +701,7 @@ func (w *surfaceBase) SetModalTarget(target ModalTarget) {
 		return
 	}
 	w.modalTarget = target
+	notifyRootContext(w.owner())
 	if target != nil {
 		w.cancelInput(GestureInterrupted)
 	}

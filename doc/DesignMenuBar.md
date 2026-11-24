@@ -1,7 +1,6 @@
 # MenuBar 与 macOS 原生菜单栏
 
-> 状态：2026-11-23 设计草案，尚未实现。本文保存菜单栏接入的边界与实施指导；
-> 新增类型、方法、语义角色和平台能力均为拟议接口，不代表当前支持。
+> 状态：2026-11-24 已实现首版桌面 MenuBar；原生操作和验证边界见 [Plan](Plan.md#menu-bar)。
 >
 > 依赖：[子菜单](DesignMenuSubmenu.md)、[菜单模型](DesignMenu.md)、
 > [MenuButtonGroup](DesignMenuButtonGroup.md)、[共享命令](DesignCommand.md)。
@@ -20,7 +19,7 @@ MenuButton 是可放置自定义 Child 的按钮，不直接作为 MenuBar 的�
 MenuButtonGroup 保持自由组合控件的局部菜单联动容器；不自动升级为系统菜单栏。
 原生分支接受明确的菜单数据，不从 Widget 子树提取文字，也不转换任意 Widget。
 
-## 2. 公共接口草案
+## 2. 公共接口
 
 ```go
 type MenuBarMode uint8
@@ -62,7 +61,7 @@ ui.VBox(
 )
 ```
 
-链式 Submenu 的互斥、空声明及递归协调见子菜单设计；该入口仍待复核确认。
+链式 Submenu 的互斥、空声明及递归协调见子菜单设计；MenuItemView.Visible(bool) 同步条目可见性。
 MenuBar 顶层首版只接受子菜单项，标题、Enabled、Visible 来自该条目；普通叶子项和
 分隔线属于配置错误，两种呈现遵守相同约束。任意按钮混排使用 MenuButtonGroup。
 空模型为正常无菜单状态。隐藏与空分支的交互规则沿用子菜单，不修改 Command 状态。
@@ -88,141 +87,176 @@ Auto 表示采用框架已支持的接入能力，不等于查询系统中所有
 
 用户显式 Visible(false) 或隐藏祖先会撤销两种业务呈现；原生呈现本身不是用户隐藏。
 不能仅通过 Measure 返回零大小处理，因为父布局仍可能分配间距与权重；也不能
-在 ui.ComposeView 中条件删除该节点。实施前在 GUI 评审最小的呈现参与机制，统一
+在 ui.ComposeView 中条件删除该节点。GUI 使用私有的窗口呈现参与标记，统一
 检查布局、绘制、焦点、事件和快照，不将 MenuBar 特例散入每种布局或 UI Root。
 
 MenuBarView 使用普通 WidgetView 和既有菜单描述协调。模式改变只替换呈现，不
 重建业务模型和命令连接。模式／模型切换先结束旧展开链，完成新投影后提交呈现，
 在正常布局和首帧前确定结果；原生菜单同步不经过 Painter 或 SharedPopover。
 
-## 4. 应用菜单与窗口菜单来源
+## 4. 原生窗口能力与资源归属
 
-AppKit 的主菜单属于 NSApplication，GUI 中声明的 MenuBar 仍属于所在 Window。
-GUI 选择当前窗口的有效业务菜单来源，平台只安装指定的原生菜单，不识别
-MenuButton、CommandScope 或 Widget 祖先。
+平台使用原生 Window 的可选能力，与 WindowManagement 的获取方式一致：
 
-- 每个 Window 最多登记一个可见的 Auto 来源；其他业务条显式使用 InWindow。
-  重复来源报告配置错误并保留原有效登记，不由树遍历顺序反复抢占。
-- 普通窗口切换时选择新窗口来源；新窗口无来源或明确 InWindow 时，切回应用默认
-  菜单，不能继续激活另一个文档窗口的业务操作。
-- Popover、Tooltip、下拉菜单及临时附属表面不成为新来源。辅助面、原生面板和模态
-  对话框按所属窗口关系处理；模态限制参与操作可用性，不让附属面抢走文档菜单。
-- 应用失活不销毁各窗口投影；重新激活时根据实际窗口事实重选。所有来源失效后只
-  保留应用默认菜单，不保留已销毁窗口的动作。
-- 菜单挂载、隐藏、卸载、跨窗口移交和窗口销毁均更新登记。旧清理仅撤销自己仍
-  持有的来源代次，不能清除随后安装的新来源。
+```go
+type WindowMenuBar interface {
+    Window
+    SetMenu(items []MenuItem) error
+}
+```
 
-窗口 active／main／key 及附属关系以 AppKit 事实为依据；GUI 不把任意 FocusOut
-都当作切换文档来源。公开窗口输入焦点契约不因此改义。需要新增事实时先在
-platform 独立验证，再用于 GUI 来源选择。
+- SetMenu 复制整个值描述；空切片撤销该窗口的业务菜单，基本应用菜单保留。
+- 能力与 Window 是同一对象，没有单独的创建工厂、事件 handler 或 Destroy。
+  Window 销毁时兜底释放本窗口投影，Platform 释放应用级原生资源。
+- 失败保留此前登记的描述。GUI 决定回到窗口内呈现时显式撤销旧登记，并一次性报告
+  本次更新及撤销的错误，不在重绘时重试。
+- GUI 只登记各窗口的业务菜单。AppKit 主菜单选择、主窗口与附属窗口关系、原生跟踪
+  和资源切换留在 Cocoa；不公开 MainWindowEvent，也不让 GUI 再维护应用级来源表。
+- 原生对象不持有 gui.MenuItem、Command 或 Widget。GUI 不管理 NSMenu 的创建、安装
+  或销毁，不需要公开的菜单投影、Source 和 Revision。
 
-macOS 的应用菜单与 File／Edit 等窗口业务菜单分开。首版必须具备可用的基本应用
-菜单，隐藏、显示和退出走对应原生／GUI 生命周期入口；不能直接 terminate 绕过
-框架的退出处理。About、Settings、Window、Help 等角色映射的公共 API 单独复核，
-不根据标题字符串、语言或 MenuButton 的内容猜测搬移条目。InWindow 只控制该组
-业务菜单，不表示删除应用的基本系统菜单。
+每个 GUI Window 最多登记一个可见 Auto MenuBar。重复登记报告一次配置错误，保留
+原有效登记；原条隐藏、卸载或改为 InWindow 后，窗口内的候选可以接替。该协调只访问
+所属窗口的 MenuBar，不扫描整个应用，也不在普通 RequestLayout、布局或 Painter 中同步。
 
-## 5. 原生投影、状态与动作
+MenuBar 订阅模型、命令、快捷键和逻辑上下文。祖先显隐、启用、重挂载和模态边界
+通过 GUI 内部的通用上下文通知发布；观察者比较自身有效状态，只在实际变化时排队。
+挂载时先确定呈现，再参与首次布局。用户可见配置和窗口内呈现参与是两个独立状态。
+直接作为窗口根时同样不分配窗口内容矩形。
 
-GUI 将模型转换为有限、明确的菜单项描述：稳定标识、纯文本标题、是否可见、
-实际启用、分隔线、勾选状态、子菜单及可原生表达的快捷键。平台描述不持有
-gui.MenuItem、Widget 或 ui.View。模型中的复用子树允许分别生成原生对象；AppKit
-对象不因模型共享而同时被多个父菜单拥有。
+Cocoa 私有保存各 Window 的投影，根据 AppKit main-window 变化安装对应菜单；没有
+业务菜单的普通窗口使用基本应用菜单。Popup 不成为主窗口，不抢占文档菜单。
+输入焦点变化不等同于主窗口切换，应用失活不销毁窗口投影。模态限制由 GUI 计算为
+菜单项可用性，激活时再校验，不由平台解释 Widget 树。
 
-原生 NSMenu／NSMenuItem 由平台接入对象拥有，所有操作在 AppKit 主线程。
-已发布项在状态改变时同步；不每帧重建菜单，不为每项永久注册新的 UI 监听器。
-原生自动启用可能覆盖手动 Enabled；自定义业务项采用明确的手动可用性或统一
-验证桥，结果来自 GUI 实际状态。不能因安装了同一个 action selector 就全部启用。
+## 5. 值描述、更新与动作有效性
 
-原生选择发出包含来源、项标识及呈现代次的平台事件。窗口业务事件进入所属
-Window.DispatchEvent，再由 GUI 校验当前来源、条目、祖先、模态限制及 Command，
-执行既有激活入口。系统菜单操作不模拟鼠标／按键，自动化也不能直接调用回调。
-无窗口时的系统级操作归应用事件入口，不借用已销毁窗口的分发器。
+MenuItem 描述包含非零 ID、纯文本标题、启用、分隔线、勾选、子菜单和逻辑快捷键。
+隐藏项由 GUI 省略。ID 在同一个窗口中唯一，标识动作绑定而不是数组下标。
 
-声明式回调始终读取最新节点状态；模型替换后的旧事件不能按索引激活新项。
-叶子选择先结束菜单跟踪／展开，再执行业务，关闭或命令回调可重建 UI、切换窗口
-或退出应用。执行前后均检查生命周期和代次，清理不依赖清空所有信号。
+原生选择经过窗口原有 handler，形成 `MenuEvent{Item: id}`，再进入
+`Window.DispatchEvent`。平台仅报告已选条目；GUI 校验登记仍存在、宿主存活、模型成员、
+祖先可见与可用、Command 和模态边界，然后调用既有激活入口。
 
-原生快捷键与 GUI Shortcut 必须保证一次输入只激活一次。先核对 AppKit key
-equivalent 在现有事件循环中的顺序；能表达的键可进入原生等价键处理，已处理后
-不得再次投递为 GUI 激活。无法表达的键保留 GUI 行为并如实显示能力限制，不能
-只显示一个系统并不执行的快捷键。具体组合边界在平台阶段验证后固定。
+- 标题、勾选等显示更新保留绑定 ID；同步尚未完成也不取消有效的已选动作。
+- 替换 Action／Command／子模型、移除条目、禁用后重新启用，需要新的绑定 ID。
+  父路径失效也使后代绑定失效。
+- 隐藏、模式切换、卸载及重新登记不复用旧 ID；分配器归所属窗口，不因 MenuBar
+  被销毁或替换而从头分配。失效记录及时删除，不保存无限历史。
+- GUI 更新的内部序号只用于防止同步回调重入，不作为原生事件的公开参数。
+- Cocoa 的跟踪与窗口切换代次属于私有实现。窗口来源切走再切回，也不能交付此前
+  排队的选择。普通菜单关闭不递增这个代次，避免丢弃已经完成的选择。
+- UI 的同位置动作仍读取最新声明式闭包，遵守既有协调契约。
 
-菜单正在跟踪时，不直接重排 AppKit 禁止修改的结构。关闭／卸载立即使过期动作
-失效，结构修改在安全边界提交；操作可用性仍以激活时的 GUI 状态复核。GUI 更新
-调度须能在菜单跟踪期间处理必要的状态变化，不能靠延迟若干毫秒推断跟踪结束。
+NSMenu／NSMenuItem 全部在 AppKit 主线程管理。标题、勾选、可用性等状态原位更新；
+结构变化先建立完整副本，跟踪结束后在安全边界提交。每个窗口至多保存一个待提交
+快照，后续更新取代旧待提交值；不使用固定延迟推断跟踪结束。释放先断开 delegate
+和 action target，再释放菜单，回调后检查生命周期。
 
-## 6. 错误与恢复
+自定义业务项明确设置 Enabled，不依赖 AppKit 根据 selector 自动启用。
+叶子选择在跟踪结束后交付，可安全修改树、切换窗口或退出。系统菜单自动化使用
+原生正常输入，不提供绕过 Window.DispatchEvent 的语义动作捷径。
 
-不支持原生接入时按 Auto 契约在窗口内呈现，是正常能力选择。
-创建、状态同步或安装失败是实际错误：通过 ConnectError／OnError 报告一次。
-新呈现完整可用后才撤下旧呈现；首次原生安装失败保留窗口内菜单与基本应用菜单。
-实际呈现状态用于快照和诊断，不把“请求 Auto”冒充“原生安装成功”。
+原生菜单描述使用 common.Key／Modifiers；各平台输入实现和 GUI 继续经 events 的
+同类型 alias 使用按键，不另造字符串按键和布尔修饰键。GUI 只解析当前窗口已登记的
+Command Shortcut，遵守绑定顺序和实际启用；字符等价键、AppKit
+修饰位和可表示范围由 Cocoa 转换。保留 Command／Option 等平台事实，不合并 Alt、
+Super 或 Win。支持基础字符、导航键、删除键和 F1–F24；不能精确表达的组合不登记原生等价键，
+原有 GUI 按键仍可处理。不承诺任意 Unicode、数字键盘或任意布局的原生等价键。
 
-失败后保留可解释的有效资源状态，不在每次重绘中循环重试；后续有效模型／模式
-变化可以重新尝试。回调重入导致请求被新操作取代属于失效请求，不重复上报旧错误。
-同步平台调用返回的错误由 GUI 消化为这一次自动呈现操作的结果，平台不再另打日志。
+AppKit 的 menuHasKeyEquivalent: 回调只对已登记业务项的匹配键执行交接：按普通
+keyDown 路径进入输入法或窗口 KeyEvent，再经 Window.DispatchEvent 和原有控制器
+处理。该次等价键不再产生 MenuEvent；焦点控件优先级、Shortcut.ConnectActivate、
+AutoRepeat 和原生文字提交保留同一路径。未处理的键也不转换成第二次菜单动作，
+避免过期投影或控件保留文字后意外执行命令。平台直接使用者同样通过 KeyEvent 处理等价键。
+鼠标选择和菜单内的键盘导航确认仍在跟踪结束后报告 MenuEvent。
 
-## 7. 语义、平台差异与实现边界
+原生按键回调可能同步更新菜单或销毁窗口；回调期间保留接收者，并将结构提交与
+释放延至回调和菜单跟踪结束。标准应用菜单的快捷键继续由 AppKit 处理。
 
-拟为 MenuBar 增加 menubar 语义角色及请求／实际呈现属性。窗口内顶层项报告菜单
-入口、可用性和实际展开状态；其 Popup 仍是独立宿主。原生模式下内部按钮没有窗口
-内可点击边界，不伪造屏幕坐标或把系统菜单当作窗口子控件点击。
+## 6. 应用退出与基本系统菜单
 
-原生菜单自身的可访问性由 AppKit 提供；GOUI 快照说明当前来源和原生呈现状态。
-需要覆盖系统菜单的自动化须经过原生正常输入，不能新加执行 MenuItem 的语义捷径。
+基本应用菜单归 Cocoa 的应用接入，独立于 gui.MenuBar 是否存在。包含 Hide、
+Hide Others、Show All 和 Quit；.app 使用 bundle 显示名，裸程序使用进程名。
+基本应用菜单保留 AppKit 自动可用性校验，业务项才由 GUI 提供 Enabled。
+标准应用动作和菜单委托 selector 在 frameworks/appkit 初始化，Cocoa 只实现适配行为。
+InWindow 只选择业务菜单的呈现位置，不删除基本应用菜单。About／Settings 等角色
+及系统应用菜单本地化暂不增加，不按业务标题猜测角色。
 
-| 归属 | 计划修改 |
+正常应用退出直接复用既有事件循环和 GUI 收尾，不新增 QuitEvent、ConnectQuitRequest
+或生命周期服务。Platform.NewEventLoop 保持无参数，其他平台和普通调用点不承载
+macOS 退出通知。
+
+Cocoa 的应用委托和基本菜单在本平台应用初始化时创建，归 Platform 所有；
+NewEventLoop 只建立事件循环。标准 terminate:、Command+Q 和 Dock Quit 都进入
+applicationShouldTerminate:；菜单仍在跟踪时安全结束跟踪，之后停止原生循环。
+返回 NSTerminateCancel 仅防止 AppKit 直接 exit()，让 Run 正常返回。
+
+GUI 已有的 Application.Run 返回路径执行幂等 shutdown，与显式 Quit 共用清理。
+Shutdown 通知前停止定时器与设置监听，之后清理窗口、控件与服务；不提供否决，
+没有窗口或业务 MenuBar 时也按相同流程退出。窗口 CloseRequest 保留独立含义。
+
+本轮不改变 OpenURL／OpenPath 的接口与归属。
+
+## 7. 错误、语义与实现边界
+
+不支持 WindowMenuBar 时按 Auto 契约使用窗口内呈现，是正常能力选择。
+创建、更新或登记失败由 ConnectError／OnError 报告一次，保留可用的窗口内入口。
+失败后不逐帧重试，后续有效模型、模式或上下文变化可以重新请求。
+错误回调可能销毁宿主、替换模型或模式，必须按当前生命周期和内部更新序号复核。
+
+MenuBar 提供 menubar 角色及 MenuBarInfoKey／MenuBarInfo 的 Mode、Native。
+Native 表示已登记为本窗口的原生菜单来源，不表示应用当前前台窗口。原生模式
+窗口内 Bounds 为空，没有虚假的内部按钮、点击动作或系统菜单屏幕坐标。
+原生可访问性由 AppKit 提供；窗口内按钮继续报告实际边界、可用性和展开状态。
+
+| 归属 | 职责 |
 | --- | --- |
-| platform/common、platform/events、platform 导出 | 原生菜单能力事实、值描述和激活事件；接口先独立评审 |
-| platform/darwin/frameworks/appkit | NSMenu／NSMenuItem、NSApplication 菜单、delegate 与 selector 绑定 |
-| platform/darwin/cocoa | 原生资源、应用默认菜单、安装与事件回传；主线程及跟踪安全 |
-| gui/MenuBar 与窗口边界 | 模型观察、来源选择、呈现参与、动作校验及资源清理 |
-| ui/menu.go 或对应主类型文件 | MenuBarView、递归菜单协调和信号生命周期 |
-| theme/basic、theme/modern | 窗口内菜单条样式，保持布局参数和样式分离 |
+| platform/common、platform/events、platform | WindowMenuBar、独立描述、窗口 MenuEvent |
+| platform/darwin/frameworks/appkit/appkit_darwin.go | NSMenu／NSMenuItem、NSApplication 与委托绑定 |
+| platform/darwin/cocoa | 原生对象、主窗口菜单选择、跟踪安全、正常应用退出接入 |
+| gui/application.go | 显式退出和原生循环正常结束后的统一清理 |
+| gui/MenuBar 与 Window | 窗口内协调、模型观察、值投影和动作有效性 |
+| gui 通用 Widget／Root 入口 | 窗口呈现参与、有效上下文通知，无菜单类型分支 |
+| ui/menu.go | 既有 WidgetView、递归模型协调和信号清理 |
+| theme/basic、theme/modern | 仅窗口内外观 |
 
-文件名与拆分按职责和实际体量决定。无须修改 Painter，不新增应用级 Popup 管理器，
-也不把菜单命令解析放入 platform 或 UI 协调器。
+不修改绘图后端，不新增应用级 Popup 管理器，不将命令解析放入平台或 UI 协调器。
 
-## 8. 实施与验证
+## 8. 验证
 
-1. 先完成递归菜单模型、PopoverMenu 多级呈现与父子协调，覆盖右键菜单、独立
-   MenuButton、MenuButtonGroup；完整子菜单能力是窗口内 MenuBar 的前置。
-2. 在 platform 验证原生菜单创建、修改、选择、窗口事实、快捷键、跟踪期间调度和
-   退出路径，确认应用级与窗口级事件的边界，不以 FFI 可调用代替应用可用。
-3. 实现 GUI／UI MenuBar 的窗口内呈现、模式与来源生命周期，再集成 macOS 原生
-   投影。按独立能力拆分提交，相关回归随实现提交。
+逻辑回归覆盖零占位与直接窗口根、挂载／卸载、祖先显隐／启用、模态、重复登记、
+失败与回调重入、各窗口 ID 隔离、命令及快捷键更新、无关布局不触发原生同步。
+动作回归同时覆盖显示变化仍执行一次，以及替换、移除再插入、禁用再启用、模式
+往返和窗口销毁时拒绝旧动作；包含未完成同步的批处理窗口。
 
-逻辑测试覆盖递归描述、最新闭包、Command 绑定、隐藏／卸载、模式切换、无布局
-留白、重复来源、来源切换、失败及旧事件代次。语义检查包含原生模式无窗口命中
-区域，状态不能随 UI 重建遗留。
+应用测试验证显式 Quit 和原生循环返回两条路径，有／无窗口时均在 Shutdown 前
+停止定时器及设置监听、拒绝新任务，并在 UI 线程仅清理一次。
 
-窗口验收覆盖 Linux／Windows 的窗口内菜单、macOS 的 Auto／InWindow、两个窗口
-不同菜单、附属弹窗／模态限制、关闭来源窗口、亮暗与语言变化、禁用／勾选、动态
-子菜单及一次性快捷键。macOS 同时注明裸可执行文件或 .app，验证应用菜单、正常
-退出、激活恢复和实际菜单跟踪。全仓 go test、必要 race 与交叉编译分别记录；
-构建、原生对象创建和窗口启动均不替代真实菜单操作验收。
-
-实施前还需复核：应用菜单角色 API、通用呈现参与机制、原生快捷键可表达集合、
-多窗口与模态面板来源优先级，以及平台能力／事件的最终命名。本文不宣称这些
-细节已完成原生验证，也不将其混入子菜单基础模型的实现批次。
+原生窗口入口独立验收 WindowMenuBar.SetMenu、相同 ID 在两个窗口的路由、显示
+更新、禁用、非法描述不替换原菜单，以及无窗口时原生退出后正常返回。
+GUI／UI 入口覆盖 macOS Auto／InWindow、两窗口、无菜单窗口、Popup、语言、
+跟踪期间更新与正常退出；Linux 验证窗口内交互与亮暗主题。
+全仓 go test、必要 race、跨平台编译和桌面操作分别记录，不用编译代替原生验收。
+实际结果和验证缺口见 [Plan](Plan.md#menu-bar)。
 
 ## 9. 参考与取舍
 
-2026-11-23 核对：
+2026-11-24 复核：
 
 - [Qt 6.8 QMenuBar.nativeMenuBar](https://doc.qt.io/qt-6.8/qmenubar.html#nativeMenuBar-prop)
-  文档承诺支持的平台可在原生与窗口内菜单间选择；GOUI 首版只接 macOS 原生，
-  不承诺 Qt 的 Linux 全局协议或按标题推断角色。
-- [Qt 6.8.3 Cocoa 菜单栏源码](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/cocoa/qcocoamenubar.mm#L241)
-  区分窗口来源与应用菜单，并排除临时 Popup 对正常来源的抢占。采用职责划分，
-  不照搬其全局对象表、文本匹配或特定系统兼容处理。
-- [Flutter PlatformMenuBar](https://api.flutter.dev/flutter/widgets/PlatformMenuBar-class.html)
-  当前官方文档将其保留在构建树中以更新菜单数据，原生显示没有 Flutter 视觉实体。
-  GOUI 结合窗口内模式，保留普通 Widget 生命周期，不另建 UI 原生菜单树。
-- Apple [菜单归属](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/MenuList/Articles/HowMenusWork.html)
-  说明 NSApplication 主菜单与 NSMenu 层级；[启用规则](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/MenuList/Articles/EnablingMenuItems.html)
-  说明自动与手动验证的区别。这些是 AppKit 契约，窗口来源策略由 GUI 决定。
-- Apple [Views in Menu Items](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/MenuList/Articles/ViewsInMenuItems.html)
-  实际允许部分自定义 NSView，且有输入和跟踪限制。GOUI 不支持任意 Widget 转换
-  是本设计的范围选择，不能写成 AppKit 完全不支持复杂内容。
+  保留 QWidget，原生和窗口内呈现共用声明身份。采用该职责划分，不拆分 GUI Widget。
+- [Qt 6.8.3 Cocoa 菜单栏](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/cocoa/qcocoamenubar.mm)
+  在 Cocoa 内部处理窗口关联和菜单切换，排除临时 Popup；其使用 Qt focusWindow
+  的具体策略不直接照搬，GOUI 使用 AppKit main-window 通知。
+- [Qt 6.8.3 应用委托](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platforms/cocoa/qcocoaapplicationdelegate.mm)
+  applicationShouldTerminate 即使允许退出也返回 NSTerminateCancel，使框架事件循环
+  正常返回 main。仅采用正常清理的控制流，不复制其可取消会话管理体系。
+- [Flutter 3.38 PlatformMenuBar](https://github.com/flutter/flutter/blob/3.38.0/packages/flutter/lib/src/widgets/platform_menu_bar.dart)
+  保留构建生命周期并投影菜单模型；其 macOS 默认插件仅使用窗口 0，不作为多窗口归属证据。
+- [GTK 4.18.6 Quartz 应用接入](https://github.com/GNOME/gtk/blob/4.18.6/gtk/gtkapplication-quartz.c)
+  区分应用菜单及活动窗口动作。借鉴归属划分，不照搬 GAction／GMenuModel 对象系统。
+- Apple [菜单归属](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/MenuList/Articles/HowMenusWork.html)、
+  [启用规则](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/MenuList/Articles/EnablingMenuItems.html)
+  说明 NSApplication 主菜单及自动验证行为。任意 Widget 转换不在 GOUI 范围内，
+  并不表示 AppKit 完全禁止自定义 NSView 菜单项。

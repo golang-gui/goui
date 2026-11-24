@@ -25,6 +25,8 @@ type MenuItem struct {
 	revision  uint64
 	changed   signal.Signal0
 	submenu   MenuModel
+
+	actionChanged signal.Signal0 // invalidate native actions without reloading popover rows
 }
 
 func NewMenuItem(label string, action func()) *MenuItem {
@@ -67,6 +69,8 @@ func (mi *MenuItem) SetAction(action func()) {
 	mi.revision++
 	if displayChanged {
 		mi.changed.Emit()
+	} else {
+		mi.actionChanged.Emit()
 	}
 }
 

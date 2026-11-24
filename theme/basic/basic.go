@@ -129,6 +129,13 @@ func coreRules() []style.Rule {
 			BackgroundColor(color.Transparent).
 			BorderColor(color.RGBA{R: 102, G: 147, B: 217, A: 255}).BorderWidth(2),
 
+		style.Name("menu-bar").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
+		style.Name("menu-bar-item").BackgroundColor(color.Transparent).ForegroundColor(color.Black).BorderWidth(0).Radius(0),
+		style.Name("menu-bar-item").State(style.Hovered).BackgroundColor(color.RGBA{R: 230, G: 230, B: 230, A: 255}),
+		style.Name("menu-bar-item").State(style.Pressed).BackgroundColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}),
+		style.Name("menu-bar-item").Part("expanded").BackgroundColor(color.RGBA{R: 180, G: 180, B: 180, A: 255}),
+		style.Name("menu-bar-item").Part("focus").State(style.FocusVisible).BorderColor(accent).BorderWidth(2).BackgroundColor(color.Transparent),
+
 		style.Name(styleNameTextInput).
 			BackgroundColor(color.White).
 			ForegroundColor(color.Black).

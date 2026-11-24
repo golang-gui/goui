@@ -55,6 +55,59 @@ func TestApplicationDoesNotQuitWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestApplicationShutdownStopsTimersBeforeNotification(t *testing.T) {
+	for _, nativeExit := range []bool{false, true} {
+		for _, withWindow := range []bool{false, true} {
+			t.Run(fmt.Sprintf("native=%t/window=%t", nativeExit, withWindow), func(t *testing.T) {
+				runtime.LockOSThread()
+				defer runtime.UnlockOSThread()
+				app, _, makeWindow := applicationWindowsFixture(t, false)
+				loop := &activationTestLoop{tasks: make(chan func(), 16)}
+				app.loop, app.uiThread = loop, gothread.GetId()
+				app.timers = newTimerScheduler(loop.Post, time.Now)
+				t.Cleanup(app.timers.finish)
+				timer := app.NewTimer()
+				if err := timer.Start(time.Hour); err != nil {
+					t.Fatal(err)
+				}
+				var root Widget
+				if withWindow {
+					root = makeWindow(false).Widget()
+				}
+				shutdowns, settingsStops := 0, 0
+				app.stopSettings = func() { settingsStops++ }
+				app.ConnectShutdown(func() {
+					shutdowns++
+					if timer.Active() || timer.Start(time.Hour) == nil {
+						t.Error("Shutdown 通知时定时器仍可运行或重新启动")
+					}
+					if settingsStops != 1 || gothread.GetId() != app.uiThread {
+						t.Error("设置监听未停止或清理不在 UI 线程")
+					}
+					app.Post(func() { t.Error("退出后仍接收应用任务") })
+					app.Quit() // 清理回调中的退出不能重复清理。
+					app.shutdown()
+				})
+				loop.Post(func() {
+					if nativeExit {
+						loop.Quit()
+					} else {
+						app.Quit()
+					}
+				})
+				if err := app.Run(); err != nil {
+					t.Fatal(err)
+				}
+				app.Quit()
+				app.shutdown()
+				if shutdowns != 1 || settingsStops != 1 || len(app.Windows()) != 0 || root != nil && !root.base().destroyed {
+					t.Fatal("两条退出路径未完成一次完整清理", shutdowns, settingsStops)
+				}
+			})
+		}
+	}
+}
+
 // 使用现有后端逐次提供独立窗口替身；退出仍走 GUI 生命周期，不创建原生窗口。
 func applicationWindowsFixture(t *testing.T, autoQuit bool) (*application, *quitCountLoop, func(bool) *window) {
 	t.Helper()

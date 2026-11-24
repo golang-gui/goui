@@ -113,6 +113,7 @@ func modalChanged(root Root) {
 		host.rootState().modal.dirty = true
 		_ = root.RequestPaint()
 	}
+	notifyRootContext(root)
 }
 
 func ensureModalRoot(root Root) {
@@ -286,6 +287,7 @@ func blockModalInput(host Surface) {
 	}
 	b.modal.blocked = true
 	b.modal.revision++
+	notifyRootContext(w.owner())
 	resetModalInput(w.owner().(modalHost))
 	if !w.destroyed {
 		w.imReset()
@@ -303,6 +305,7 @@ func unblockModalInput(host Surface) {
 	}
 	w.modal.blocked = false
 	w.modal.revision++
+	notifyRootContext(w.owner())
 	if w.destroyed {
 		return
 	}

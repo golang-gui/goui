@@ -52,6 +52,7 @@ type paintRequester interface {
 // frame, input, drag-and-drop and the current native surface. Each host embeds
 // its own instance; native window and popover policy remains in those hosts.
 type rootBase struct {
+	contextChanged signal.Signal0     // logical ancestry, enablement and modal context
 	shared         *sharedPopoverSlot // one child presentation cache per actual host
 	modal          *modalState
 	app            *application
@@ -185,7 +186,11 @@ func (b *rootBase) layoutFrameIn(content Widget, bounds geometry.Rectangle) {
 		defer observation.end()
 		b.layoutDirty = false
 		measureWidget(content, layout.Tight(bounds.Size)) // hosts are extrinsic: content fills them
-		content.Arrange(bounds)
+		if windowVisible(content) {
+			content.Arrange(bounds)
+		} else {
+			content.base().rect = geometry.Rectangle{}
+		}
 	}
 }
 
@@ -550,5 +555,13 @@ func (b *rootBase) updateStateStyles() {
 				widget.RequestLayout()
 			}
 		}
+	}
+}
+
+// notifyRootContext publishes logical input/lifecycle context, independently of
+// layout and painting. Observers compare their own effective state before work.
+func notifyRootContext(root Root) {
+	if host, ok := root.(interface{ rootState() *rootBase }); ok {
+		host.rootState().contextChanged.Emit()
 	}
 }

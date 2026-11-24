@@ -51,8 +51,8 @@ type Application interface {
 	// are ready. Connect before Run. The initial activation is asynchronous;
 	// focus changes and drawable replacement do not activate the application.
 	ConnectActivate(func()) signal.Handle
-	// ConnectShutdown runs once on the UI thread before event-loop exit. Release
-	// UI-owned connections and resources here. It is not a cancelable request.
+	// ConnectShutdown runs once on the UI thread during orderly shutdown, before
+	// Run returns. Release UI-owned connections and resources here.
 	ConnectShutdown(func()) signal.Handle
 	// Run starts UI dispatch and waits until shutdown callbacks have completed.
 	// Call from the startup goroutine used by NewApplication. On mobile this
@@ -238,6 +238,11 @@ func (a *application) shutdown() {
 	}
 	a.shutdownDone = true
 	a.quitting.Store(true)
+	// A native event loop can finish without an explicit GUI Quit. Stop timer
+	// admission before notifying owners, just as the explicit path already does.
+	if a.timers != nil {
+		a.timers.close()
+	}
 	if a.stopSettings != nil {
 		a.stopSettings()
 		a.stopSettings = nil
