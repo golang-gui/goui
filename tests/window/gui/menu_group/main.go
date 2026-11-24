@@ -8,7 +8,8 @@
 // 键盘切换后指针不动应保持该菜单，真实移动才重新跟随；Tab 关闭并继续焦点导航。Rebuild 更新动作代次，Dark 切换外观，组及控件身份保留。
 // 级联菜单：File/Edit/View 的 Recent → More 可展开三级；悬停延迟展开，斜移到子层
 // 不应切到掠过的兄弟项；Right/Left/逐次 Esc 分层进入返回，叶项关闭整链且执行一次。
-// 子菜单主体应重叠父菜单约 4 DIP。移到其他父项或宿主留白时，子层和旧父项背景立即消失；
+// 子菜单主体应重叠父菜单约 4 DIP。移到其他父项，高亮即时跟随，旧展开项只保留较弱背景；
+// 旧子层在约 250 ms 后关闭或替换。移到宿主留白应清空整链活动项，但保持已展开的菜单。
 // 向子层斜移仍可跨行到达，进入后不被旧计时关闭；屏幕右侧翻转后同样验证。
 // F6/Check 输出 ASSERT PASS、JSON 状态及窗口局部 DIP 的 BOUNDS，仅供观察和定位。
 // 自动场景还验证最新动作闭包、主题重建、空菜单、禁用和不同组隔离；没有语义动作接口。
@@ -82,6 +83,7 @@ func main() {
 	submenuActions := 0
 	deadline := time.Now().Add(20 * time.Second)
 	started, complete, step := false, false, 0
+	var holdUntil time.Time
 	var app ui.App
 	var group *gui.MenuButtonGroup
 	previous := map[string]*gui.MenuButton{}
@@ -230,7 +232,7 @@ func main() {
 						key(events.KeyEnd)
 						key(events.KeyArrowRight)
 					case 15:
-						require(len(win.Popovers()) == 2, "child menu missing before immediate dismissal")
+						require(len(win.Popovers()) == 2, "child menu missing before delayed dismissal")
 						target := win.Popovers()[0]
 						var action gui.WidgetInfo
 						var find func(gui.WidgetInfo)
@@ -245,14 +247,42 @@ func main() {
 						find(target.Widget().Snapshot())
 						require(action.Bounds.Width > 0, "Action row missing")
 						must(target.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: action.Bounds.Center()}))
-						require(len(win.Popovers()) == 1, "moving to a leaf delayed closing the old submenu")
+						require(len(win.Popovers()) == 2, "moving to a leaf closed the submenu without grace")
+						find(target.Widget().Snapshot())
+						require(action.Selected, "leaf selection did not follow the pointer immediately")
+					case 16:
+						if len(win.Popovers()) == 2 {
+							return // 等待实际关闭状态，仍受整体超时约束。
+						}
+						require(len(win.Popovers()) == 1, "delayed closing removed the root")
 						key(events.KeyEnd)
 						key(events.KeyArrowRight)
 						require(len(win.Popovers()) == 2, "child menu did not reopen")
+						key(events.KeyArrowRight)
+						require(len(win.Popovers()) == 3, "grandchild did not reopen")
 						// 选择宿主右下留白，避免输入框中心恰好被菜单覆盖。
 						bounds := win.Widget().Snapshot().Bounds
 						must(win.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: bounds.X + bounds.Width - 12, Y: bounds.Y + bounds.Height - 12}}))
-						require(len(win.Popovers()) == 1 && button("file").Opened(), "owner motion did not close only the child immediately")
+						holdUntil = time.Now().Add(600 * time.Millisecond)
+					case 17:
+						require(len(win.Popovers()) == 3 && button("file").Opened(), "owner motion closed the expanded path")
+						var unselected func(gui.WidgetInfo)
+						unselected = func(info gui.WidgetInfo) {
+							require(!info.Selected, "outside motion retained an active menu item")
+							for _, child := range info.Children {
+								unselected(child)
+							}
+						}
+						for _, popup := range win.Popovers() {
+							unselected(popup.Widget().Snapshot())
+						}
+						if time.Now().Before(holdUntil) {
+							return // 覆盖超过普通宽限和斜移保护期限的持续保留。
+						}
+						key(events.KeyEscape)
+						require(len(win.Popovers()) == 2, "Escape did not return from retained grandchild")
+						key(events.KeyArrowLeft)
+						require(len(win.Popovers()) == 1, "Left did not return from retained child")
 						key(events.KeyEscape)
 						require(len(win.Popovers()) == 0, "root menu survived Escape")
 						complete = true

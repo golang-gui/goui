@@ -511,8 +511,7 @@ func (c *menuPointerController) HandleCrossing(ctx CrossingContext) {
 	if ctx.Direction() == CrossingLeave {
 		c.content.selectItem(nil)
 		if pm := c.content.presenter; pm != nil {
-			position, valid := ctx.Position()
-			pm.pointerLeave(position, valid)
+			pm.pointerLeave()
 		}
 	} else if position, ok := ctx.Position(); ok {
 		// Native Enter delivers crossing without an ordinary pointer move.
@@ -1167,7 +1166,7 @@ func (r *menuItemRow) State() style.State {
 
 func (r *menuItemRow) presentationState() style.State {
 	st := r.State() &^ (style.Hovered | style.Pressed)
-	if st.Has(style.Selected) || r.presenter != nil && r.presenter.expanded == r.mi {
+	if st.Has(style.Selected) {
 		st |= style.Hovered
 		if r.State().Has(style.Pressed) {
 			st |= style.Pressed
@@ -1177,7 +1176,11 @@ func (r *menuItemRow) presentationState() style.State {
 }
 
 func (r *menuItemRow) resolvedStyle() style.Style {
-	return ResolveWidgetStyle(r, styleNameMenuItem, style.PartDefault, r.presentationState())
+	part := style.PartDefault
+	if !r.State().Has(style.Selected) && r.presenter != nil && r.presenter.expanded == r.mi {
+		part = "expanded"
+	}
+	return ResolveWidgetStyle(r, styleNameMenuItem, part, r.presentationState())
 }
 
 func (r *menuItemRow) setPressed(p bool) {
