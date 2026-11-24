@@ -44,6 +44,11 @@ X11 的 GLXWindow 与其引用的 X Window 分开管理。已知宿主丢失错�
 `Window.DispatchEvent` 优先处理终止，复用 Destroy 信号、控件树释放、窗口资源清理和
 最后一个窗口退出策略。通知不经过关闭请求、输入事件或 Chrome 查询。
 
+显式 Application.Quit 与桌面原生事件循环正常结束都进入同一个幂等 shutdown。
+Shutdown 通知前停止定时器调度和系统设置监听，拒绝新的应用任务；通知后由窗口
+所有者释放剩余控件与原生资源。ConnectShutdown 在 UI 线程执行一次，并在 Run
+返回前完成；原生循环已结束时也不跳过清理，不要求通知一定发生在事件循环停止前。
+
 Popover 的原生表面终止只释放本次表面、退出模态并发出一次 Closed，保留内容和
 Popover 对象；之后 Show 可以重新创建表面。已有 `surfaceEpoch` 排除旧表面的迟到事件。
 不改变 Popover 显式 Destroy 对内容的现有卸载规则，不添加 UI 层 API。
@@ -98,3 +103,23 @@ Windows 的 RequestClose 异步投递 WM_CLOSE，用例在下一阶段检查计�
 原生终止、跨 Surface 迁移或 owner 结束。Surface 清理包括隐藏实例，并等待其活动帧、
 原生绘制及内容变更回调安全退出。先卸载绘制资源再释放 Painter，最后释放原生 Popup。
 普通 Go 对象可在新 Surface 重新显示；共享槽的专用普通 Popover 则随 Surface 最终 Destroy。
+
+## macOS 正常应用退出
+
+macOS 的菜单 Quit、Command+Q 和 Dock Quit 都表示正常退出，不增加可取消的应用
+退出请求，也不为菜单接入增加通用 ApplicationLifecycle 服务或平台应用事件流。
+Platform.NewEventLoop 保持无参数；WindowMenuBar.SetMenu 继续只负责窗口业务菜单。
+
+Cocoa 的应用委托与基本应用菜单随本平台应用初始化建立，由 Platform 释放。
+标准 terminate: 进入 applicationShouldTerminate: 后，先安全结束仍在跟踪的菜单，
+再通过既有 EventLoop.Quit 停止原生循环。委托返回 NSTerminateCancel 仅为了避免
+AppKit 直接结束进程、跳过 Go 的收尾；不是交给 GUI 或应用否决退出。
+
+原生循环正常返回后，gui.Application.Run 调用既有幂等 shutdown；与显式 Quit
+共用定时器、设置监听、Shutdown 信号和窗口／服务清理。在 Run 返回前完成清理，
+不依赖存在窗口、MenuBar 或应用级事件 handler。窗口自身的 CloseRequest 仍是
+单独的可取消操作，不阻止 Application 直接销毁窗口完成退出。
+
+该接入仅处理 AppKit 的正常应用退出，不改变 Android/iOS 的系统宿主与进程寿命。
+参考 Qt 6.8.3 Cocoa 应用委托同样避免直接 exit 并正常返回 main；GOUI 不接入其
+可取消会话管理。菜单边界和验证见 [DesignMenuBar](DesignMenuBar.md)。

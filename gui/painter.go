@@ -118,10 +118,10 @@ func newPainter(base graphics.Painter, bounds geometry.Rectangle, scale float32)
 // Each visible Widget paints itself first; its visible children are then
 // painted in tree order with independent local drawing state.
 func paintWidget(widget Widget, p *painter) {
-	if widget == nil || !widget.Visible() {
+	if widget == nil || !windowVisible(widget) {
 		return
 	}
-	if !ensureWidgetStyle(widget) || !widget.Visible() {
+	if !ensureWidgetStyle(widget) || !windowVisible(widget) {
 		return
 	}
 	p.paintWidget(widget)

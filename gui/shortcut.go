@@ -55,6 +55,7 @@ type Shortcut struct {
 	activate   signal.Signal1[func() bool]
 	command    *Command
 	revision   uint64
+	changed    signal.Signal0 // internal registration invalidation; no new public notification
 }
 
 func NewShortcut(gesture KeyGesture) *Shortcut { return &Shortcut{gesture: gesture, enabled: true} }
@@ -68,12 +69,14 @@ func (s *Shortcut) SetGesture(g KeyGesture) {
 	if s.command != nil {
 		s.command.shortcutsChanged.Emit()
 	}
+	s.changed.Emit()
 }
 func (s *Shortcut) Enabled() bool { return s.enabled }
 func (s *Shortcut) SetEnabled(enabled bool) {
 	if s.enabled != enabled {
 		s.enabled = enabled
 		s.revision++
+		s.changed.Emit()
 	}
 }
 func (s *Shortcut) AutoRepeat() bool          { return s.autoRepeat }
@@ -109,6 +112,7 @@ func (s *Shortcut) SetCommand(command *Command) {
 	if command != nil && s.command == command {
 		command.shortcutsChanged.Emit()
 	}
+	s.changed.Emit()
 }
 
 // ShortcutController participates in normal event propagation. Bubble (the
@@ -119,6 +123,7 @@ func (s *Shortcut) SetCommand(command *Command) {
 type ShortcutController struct {
 	EventControllerBase
 	shortcuts []*Shortcut
+	changed   signal.Signal0
 	destroyed bool
 }
 
@@ -129,14 +134,25 @@ func NewShortcutController() *ShortcutController {
 func (c *ShortcutController) AddShortcut(s *Shortcut) {
 	if s != nil && !c.destroyed && !slices.Contains(c.shortcuts, s) {
 		c.shortcuts = append(c.shortcuts, s)
+		c.changed.Emit()
 	}
 }
 func (c *ShortcutController) RemoveShortcut(s *Shortcut) {
-	c.shortcuts = slices.DeleteFunc(c.shortcuts, func(v *Shortcut) bool { return v == s })
+	if !slices.Contains(c.shortcuts, s) {
+		return
+	}
+	c.shortcuts = slices.DeleteFunc(c.shortcuts, func(other *Shortcut) bool { return other == s })
+	c.changed.Emit()
 }
 
 // Clear removes registrations without destroying shortcuts or their signals.
-func (c *ShortcutController) Clear() { c.shortcuts = nil }
+func (c *ShortcutController) Clear() {
+	if len(c.shortcuts) == 0 {
+		return
+	}
+	c.shortcuts = nil
+	c.changed.Emit()
+}
 
 func (c *ShortcutController) HandleEvent(ctx EventContext) {
 	e, ok := ctx.Event().(events.KeyEvent)

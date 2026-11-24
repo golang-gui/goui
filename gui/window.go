@@ -108,6 +108,10 @@ const (
 )
 
 type window struct {
+	menuBars                    []*MenuBar
+	menuBar                     *MenuBar
+	nextMenuID                  uint64
+	menuSyncQueued, menuSyncing bool
 	surfaceBase
 	title         string
 	closeRequest  signal.Signal1[*bool]
@@ -370,6 +374,9 @@ func (w *window) paint() {
 }
 
 func (w *window) layoutContent() (Widget, uint64) {
+	if w.destroyed {
+		return nil, 0
+	}
 	root := w.root
 	var revision uint64
 	if w.chrome != nil {
@@ -400,7 +407,7 @@ func imContextOf(widget Widget) IMContext {
 
 func visibleInTree(widget Widget) bool {
 	for widget != nil {
-		if !widget.Visible() {
+		if !windowVisible(widget) {
 			return false
 		}
 		widget = widget.Parent()

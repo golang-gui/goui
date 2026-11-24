@@ -140,6 +140,7 @@ func builtInRules(options Options) []style.Rule {
 	tabFocus := mix(focus, p.border, .25)
 	progressTrack := mix(p.window, p.text, .10)
 	rules := []style.Rule{
+		style.Name("menu-bar").BackgroundColor(color.Transparent).BorderWidth(0).Radius(0),
 		style.Name("border-box").BackgroundColor(color.Transparent).
 			BorderColor(color.Transparent).BorderWidth(0).Radius(0),
 		text("check-button"),
@@ -296,12 +297,17 @@ func builtInRules(options Options) []style.Rule {
 		{"button", [3]color.Color{p.button, buttonHover, buttonPressed}},
 		{Primary, [3]color.Color{primary[0], primary[1], primary[2]}},
 		{Flat, [3]color.Color{color.Transparent, buttonHover, buttonPressed}},
+		{"menu-bar-item", [3]color.Color{color.Transparent, p.menuHover, p.menuPressed}},
 	} {
 		borderWidth := float32(1)
 		foreground, keyboardBorder := p.text, tabFocus
 		var disabledBackground color.Color = p.button
 		hoverRule := style.Name(button.name).State(style.Hovered).BackgroundColor(button.bg[1])
 		pressedRule := style.Name(button.name).State(style.Pressed).BackgroundColor(button.bg[2])
+		if button.name == "menu-bar-item" {
+			borderWidth = 0
+			disabledBackground = color.Transparent
+		}
 		if button.name == Flat {
 			borderWidth = 0
 			disabledBackground = color.Transparent

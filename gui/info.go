@@ -176,6 +176,7 @@ const (
 	RoleScrollBar        Role = "scrollbar"  // scrollbar control (WAI-ARIA: scrollbar)
 	RoleList             Role = "list"       // virtualized list (WAI-ARIA: list)
 	RoleListItem         Role = "listitem"   // list row (WAI-ARIA: listitem)
+	RoleMenuBar          Role = "menubar"
 	RoleMenu             Role = "menu"
 	RoleMenuItem         Role = "menuitem"
 	RoleMenuItemCheckbox Role = "menuitemcheckbox"

@@ -175,6 +175,7 @@ type WidgetBase struct {
 	tooltipPlain        string // display text cached by SetTooltip for semantic snapshots
 	styleName           string // style override; "" = the control resolves with its own default name
 	hidden              bool
+	windowHidden        bool // presented outside the window, without changing Visible
 	disabled            bool
 	inheritedDisabled   bool
 	enabledRevision     uint64
@@ -438,7 +439,7 @@ func (w *WidgetBase) SetLayoutManager(l layout.LayoutManager) {
 }
 
 func (w *WidgetBase) Measure(c layout.Constraint) layout.Measurement {
-	if w.hidden {
+	if w.hidden || w.windowHidden {
 		return layout.Measurement{}
 	}
 	c = w.layoutConstraint(c)
@@ -690,7 +691,7 @@ func ensureWidgetStyle(widget Widget) bool {
 // few specialized containers call it directly. The final clamp enforces the
 // layout.Child contract even for application-defined widgets.
 func measureWidget(widget Widget, c layout.Constraint) layout.Measurement {
-	if !ensureWidgetStyle(widget) {
+	if !windowVisible(widget) || !ensureWidgetStyle(widget) {
 		return layout.Measurement{}
 	}
 	base := widget.base()
@@ -1199,7 +1200,7 @@ func (w *WidgetBase) handleCrossing(ctx CrossingContext) {
 func (w *WidgetBase) visibleChildren() []layout.Child {
 	children := make([]layout.Child, 0, len(w.children))
 	for _, child := range w.children {
-		if child.Visible() {
+		if windowVisible(child) {
 			children = append(children, widgetLayoutChild{widget: child})
 		}
 	}
@@ -1298,7 +1299,7 @@ func (c widgetLayoutChild) MainWeight() float32 {
 // It searches only this subtree, not covering siblings or window decorations,
 // and causes no input, hover or focus changes.
 func Pick(widget Widget, point geometry.Point) Widget {
-	if widget == nil || widget.base().destroyed || !widget.Visible() ||
+	if widget == nil || widget.base().destroyed || !windowVisible(widget) ||
 		!containsPoint(geometry.Rect(0, 0, widget.Rect().Width, widget.Rect().Height), point) {
 		return nil
 	}
@@ -1323,7 +1324,7 @@ func Pick(widget Widget, point geometry.Point) Widget {
 // normal contract, including not mutating the tree. Drawing/resource failures
 // are returned; panics in Paint propagate after drawing state is restored.
 func RenderWidget(widget Widget, scale float32) (image.Image, error) {
-	if widget == nil || widget.base().destroyed || !widget.Visible() {
+	if widget == nil || widget.base().destroyed || !windowVisible(widget) {
 		return nil, fmt.Errorf("gui: render unavailable widget")
 	}
 	host, ok := widget.Root().(interface {
@@ -1450,6 +1451,7 @@ func (w *WidgetBase) propagateEnabled(oldEnabled bool) {
 		return
 	}
 	root := w.root()
+	notifyRootContext(root)
 	w.RequestLayout()
 	w.requestSemanticUpdate()
 	if !w.isEnabled() {
@@ -1556,4 +1558,26 @@ func enabledAncestor(widget Widget) Widget {
 		widget = widget.Parent()
 	}
 	return widget
+}
+
+// windowVisible is the common layout, paint, picking and focus participation
+// gate. External presentation keeps the widget mounted and its Visible setting.
+func windowVisible(widget Widget) bool {
+	return widget != nil && widget.Visible() && !widget.base().windowHidden
+}
+func (w *WidgetBase) setWindowHidden(hidden bool) {
+	if w.windowHidden == hidden {
+		return
+	}
+	w.windowHidden = hidden
+	if hidden {
+		cancelTooltipSubtree(w.root(), w.self)
+		cancelGestureSubtree(w.root(), w.self)
+		if h, ok := w.root().(EventTarget); ok && focusWithin(h, w) {
+			clearSubtreeFocus(h, w)
+		}
+	}
+	w.rect = geometry.Rectangle{}
+	w.RequestLayout()
+	w.requestSemanticUpdate()
 }

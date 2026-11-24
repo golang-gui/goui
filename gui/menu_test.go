@@ -10,6 +10,7 @@ import (
 	"github.com/golang-gui/goui/core/geometry"
 	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/layout"
+	"github.com/golang-gui/goui/platform"
 	"github.com/golang-gui/goui/platform/events"
 	"github.com/golang-gui/goui/platform/graphics"
 	"github.com/golang-gui/goui/platform/graphics/software"
@@ -2632,5 +2633,532 @@ func TestMenuSubmenuOutsideCrossingPreservesReplacement(t *testing.T) {
 	_ = w.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: geometry.Point{X: 800, Y: 600}})
 	if !pm.child.Visible() || pm.expanded != b || pm.child.content.active != leaf {
 		t.Fatal("链外旧事件清除了 crossing 回调新展开的菜单状态")
+	}
+}
+
+// 原生菜单替身只保存平台值描述；动作仍经窗口分发，不调用生产私有动作捷径。
+type menuBarProbe struct {
+	*desktopTestWindow
+	items     []platform.MenuItem
+	updates   int
+	updateErr error
+}
+
+func (p *menuBarProbe) SetMenu(items []platform.MenuItem) error {
+	if p.updateErr != nil && len(items) > 0 {
+		return p.updateErr
+	}
+	p.items = items
+	p.updates++
+	return nil
+}
+func (p *menuBarProbe) Destroy() { p.items = nil; p.desktopTestWindow.Destroy() }
+func menuBarModel(action func()) (*Menu, *MenuItem) {
+	child := NewMenu()
+	leaf := child.Append("Run", action)
+	model := NewMenu()
+	model.AppendSubmenu("File", child)
+	return model, leaf
+}
+func menuBarNativeFixture(t *testing.T) (*application, *window, *menuBarProbe, *MenuBar, *MenuItem) {
+	t.Helper()
+	app, _, makeWindow := applicationWindowsFixture(t, false)
+	app.typo = &testTypography{}
+	host := makeWindow(false)
+	native := &menuBarProbe{desktopTestWindow: host.platformWindow.(*desktopTestWindow)}
+	host.platformWindow = native
+	bar := NewMenuBar()
+	model, leaf := menuBarModel(nil)
+	bar.SetMenu(model)
+	host.SetWidget(bar)
+	host.syncMenuBars()
+	if !bar.windowHidden || host.menuBar != bar || len(native.items) == 0 {
+		t.Fatal("原生菜单未注册到窗口")
+	}
+	return app, host, native, bar, leaf
+}
+func menuBarEvent(bar *MenuBar) events.MenuEvent {
+	m := bar.host.platformWindow.(*menuBarProbe)
+	return events.MenuEvent{Item: m.items[0].Children[0].ID}
+}
+
+func TestMenuBarNativePresentationAndWindowOwnership(t *testing.T) {
+	app, host, native, bar, _ := menuBarNativeFixture(t)
+	// 直接作为窗口根时也不能被宿主 Arrange 分配整个内容矩形。
+	host.width, host.height = 300, 100
+	host.layoutDirty = true
+	host.layoutContent()
+	if bar.Rect() != (geometry.Rectangle{}) {
+		t.Fatal("原生菜单作为窗口根仍被分配空间", bar.Rect())
+	}
+	// 外部呈现既不能占 spacing、weight、minsize，也不能参与命中、焦点和窗口语义边界。
+	root := NewLinearBox(layout.DirectionVertical)
+	root.SetSpacing(11)
+	host.SetWidget(root)
+	root.AddChild(bar)
+	other := newTestWidget()
+	other.SetMinSize(geometry.Size{Width: 40, Height: 20})
+	root.AddChild(other)
+	bar.SetMinSize(geometry.Size{Width: 200, Height: 200})
+	bar.SetMainWeight(3)
+	host.syncMenuBars()
+	size := measureWidget(root, layoutLooseFull)
+	if size.Height != 20 {
+		t.Fatalf("原生菜单仍参与布局: %v", size)
+	}
+	root.Arrange(geometry.Rect(0, 0, 300, 100))
+	if bar.Rect() != (geometry.Rectangle{}) || other.Rect().Height != 20 {
+		t.Fatal("原生菜单占位或影响剩余空间")
+	}
+	info := bar.Snapshot()
+	if !bar.Visible() || bar.Root() != host || info.Role != RoleMenuBar || info.Bounds != (geometry.Rectangle{}) || len(info.Children) != 0 || Pick(bar, geometry.Point{}) != nil || focusEligible(bar.group.Children()[0]) {
+		t.Fatal("外部呈现丢失生命周期或保留窗口命中区域")
+	}
+	// 其他窗口及输入焦点变化不应更改本窗口登记，原生来源选择由平台验收。
+	empty := testWindowWithSurface(&window{})
+	empty.app = app
+	app.windows = append(app.windows, empty)
+	_ = host.DispatchEvent(events.FocusEvent{Focused: false})
+	if host.menuBar != bar || len(native.items) == 0 {
+		t.Fatal("输入焦点被误当作菜单归属")
+	}
+	bar.SetMode(MenuBarInWindow)
+	host.syncMenuBars()
+	if bar.windowHidden || host.menuBar != nil || len(native.items) != 0 {
+		t.Fatal("InWindow 未恢复窗口呈现")
+	}
+	if got := measureWidget(root, layoutLooseFull).Height; got <= 31 {
+		t.Fatal("窗口内菜单未恢复自然高度", got)
+	}
+	bar.SetMode(MenuBarAuto)
+	host.syncMenuBars()
+	root.SetVisible(false)
+	host.syncMenuBars()
+	if len(native.items) != 0 || bar.windowHidden {
+		t.Fatal("隐藏祖先后来源仍有效")
+	}
+	root.SetVisible(true)
+	host.syncMenuBars()
+	if host.menuBar != bar || len(native.items) == 0 {
+		t.Fatal("重新显示未恢复来源")
+	}
+}
+func TestMenuBarNativeDispatchValidity(t *testing.T) {
+	_, host, _, bar, leaf := menuBarNativeFixture(t)
+	calls := 0
+	leaf.SetAction(func() { calls++ })
+	host.syncMenuBars()
+	event := menuBarEvent(bar)
+	_ = host.DispatchEvent(event)
+	if calls != 1 {
+		t.Fatal("有效选择未执行一次")
+	}
+	leaf.SetAction(func() { calls += 10 })
+	host.syncMenuBars()
+	_ = host.DispatchEvent(event)
+	if calls != 1 {
+		t.Fatal("旧动作被重定向到新回调")
+	}
+	_ = host.DispatchEvent(menuBarEvent(bar))
+	if calls != 11 {
+		t.Fatal("新动作未同步")
+	}
+	old := menuBarEvent(bar)
+	bar.SetVisible(false)
+	host.syncMenuBars()
+	bar.SetVisible(true)
+	host.syncMenuBars()
+	_ = host.DispatchEvent(old)
+	if calls != 11 {
+		t.Fatal("重新呈现复用了旧事件代次")
+	}
+	old = menuBarEvent(bar)
+	leaf.SetEnabled(false)
+	leaf.SetEnabled(true)
+	host.syncMenuBars()
+	_ = host.DispatchEvent(old)
+	if calls != 11 {
+		t.Fatal("禁用后重启的旧动作仍有效")
+	}
+	host.SetModalTarget(&modalProbeTarget{})
+	host.syncMenuBars()
+	_ = host.DispatchEvent(menuBarEvent(bar))
+	if calls != 11 || host.platformWindow.(*menuBarProbe).items[0].Enabled {
+		t.Fatal("模态输入未阻断原生动作")
+	}
+	host.SetModalTarget(nil)
+	host.syncMenuBars()
+	old = menuBarEvent(bar)
+	root := NewLinearBox(layout.DirectionVertical)
+	host.SetWidget(root)
+	root.AddChild(bar)
+	host.syncMenuBars()
+	_ = host.DispatchEvent(old)
+	if calls != 11 {
+		t.Fatal("卸载重装复用了旧动作 ID")
+	}
+	root.RemoveChild(bar)
+	host.syncMenuBars()
+	_ = host.DispatchEvent(old)
+	if calls != 11 || bar.host != nil {
+		t.Fatal("卸载后执行了动作或保留应用登记")
+	}
+}
+func TestMenuBarDuplicateFailureAndRecovery(t *testing.T) {
+	t.Run("detached model", func(t *testing.T) {
+		bar := NewMenuBar()
+		failures := 0
+		bar.ConnectError(func(error) { failures++ })
+		invalid := NewMenu()
+		invalid.Append("Invalid top-level leaf", nil)
+		bar.SetMenu(invalid)
+		if failures != 1 || len(bar.group.Children()) != 0 {
+			t.Fatal("未挂载的非法模型没有报告错误或保留了无效入口")
+		}
+		valid, _ := menuBarModel(nil)
+		bar.SetMenu(valid)
+		if failures != 1 || len(bar.group.Children()) != 1 {
+			t.Fatal("未挂载菜单无法恢复有效模型")
+		}
+	})
+	_, host, native, bar, _ := menuBarNativeFixture(t)
+	root := NewLinearBox(layout.DirectionVertical)
+	host.SetWidget(root)
+	root.AddChild(bar)
+	second := NewMenuBar()
+	model, _ := menuBarModel(nil)
+	second.SetMenu(model)
+	errors := 0
+	second.ConnectError(func(error) { errors++ })
+	root.AddChild(second)
+	host.syncMenuBars()
+	if errors != 1 || second.windowHidden || host.menuBar != bar {
+		t.Fatal("重复来源没有报错或抢占了原来源", errors)
+	}
+	host.syncMenuBars()
+	if errors != 1 {
+		t.Fatal("重复来源逐帧重复报错")
+	}
+	bar.SetVisible(false)
+	host.syncMenuBars()
+	if host.menuBar != second || !second.windowHidden {
+		t.Fatal("原来源撤下后未恢复候选来源")
+	}
+	second.SetMode(MenuBarInWindow)
+	native.updateErr = fmt.Errorf("injected registration failure")
+	second.SetMode(MenuBarAuto)
+	host.syncMenuBars()
+	if second.windowHidden || errors != 2 {
+		t.Fatal("登记失败没有保留窗口呈现或报告一次", errors)
+	}
+	host.syncMenuBars()
+	if errors != 2 {
+		t.Fatal("失败后逐帧重试")
+	}
+	native.updateErr = nil
+	second.SetMenu(model)
+	host.syncMenuBars()
+	if !second.windowHidden {
+		t.Fatal("新请求未恢复原生呈现")
+	}
+	projected := native
+	projected.updateErr = fmt.Errorf("injected update failure")
+	model.ItemAt(0).SetLabel("Edit")
+	host.syncMenuBars()
+	if second.windowHidden || len(projected.items) != 0 {
+		t.Fatal("更新失败没有撤销旧登记")
+	}
+}
+
+func TestMenuBarUpdatesKeepValidSelections(t *testing.T) {
+	app, host, native, bar, leaf := menuBarNativeFixture(t)
+	calls := 0
+	command := NewCommand()
+	command.SetCheckable(true)
+	command.ConnectActivate(func() { calls++ })
+	leaf.SetCommand(command)
+	event := menuBarEvent(bar)
+	// 批处理尚未同步时，已选动作不能因标题或勾选发布而丢失。
+	queue := &activationTestLoop{tasks: make(chan func(), 32)}
+	app.loop = queue
+	leaf.SetLabel("Updated")
+	command.SetChecked(true)
+	_ = host.DispatchEvent(event)
+	if calls != 1 {
+		t.Fatal("显示更新取消了已选动作")
+	}
+	host.syncMenuBars()
+	if menuBarEvent(bar) != event || native.items[0].Children[0].Title != "Updated" || !native.items[0].Children[0].Checked {
+		t.Fatal("显示更新改变绑定身份或没有更新投影")
+	}
+	updates := native.updates
+	bar.RequestLayout()
+	host.layoutContent()
+	host.contextChanged.Emit()
+	if native.updates != updates || bar.dirty {
+		t.Fatal("普通布局或无关上下文变化触发菜单同步")
+	}
+	command.SetEnabled(false)
+	command.SetEnabled(true)
+	host.syncMenuBars()
+	_ = host.DispatchEvent(event)
+	if calls != 1 || menuBarEvent(bar) == event {
+		t.Fatal("禁用后重启复用了过期命令绑定")
+	}
+}
+
+func TestMenuBarMountAllocatesUniqueWindowBindings(t *testing.T) {
+	_, host, native, bar, _ := menuBarNativeFixture(t)
+	child := bar.Menu().ItemAt(0).Submenu().(*Menu)
+	child.Append("Added after mount", nil)
+	seen := map[uint64]bool{}
+	var check func([]platform.MenuItem)
+	check = func(items []platform.MenuItem) {
+		for _, item := range items {
+			if item.ID == 0 || seen[item.ID] || item.ID > host.nextMenuID {
+				t.Fatal("挂载前临时 ID 污染窗口命名空间", item.ID, host.nextMenuID)
+			}
+			seen[item.ID] = true
+			check(item.Children)
+		}
+	}
+	check(native.items)
+}
+
+func TestMenuBarBatchedRemovalAndContextInvalidation(t *testing.T) {
+	for _, change := range []string{"remove", "visible", "enabled", "mode", "model"} {
+		t.Run(change, func(t *testing.T) {
+			app, host, _, bar, leaf := menuBarNativeFixture(t)
+			calls := 0
+			leaf.SetAction(func() { calls++ })
+			event := menuBarEvent(bar)
+			app.loop = &activationTestLoop{tasks: make(chan func(), 32)}
+			switch change {
+			case "remove":
+				model := bar.Menu().ItemAt(0).Submenu().(*Menu)
+				model.SetItems(nil)
+				model.SliceListModel.Append(leaf)
+			case "visible":
+				bar.SetVisible(false)
+				bar.SetVisible(true)
+			case "enabled":
+				bar.SetEnabled(false)
+				bar.SetEnabled(true)
+			case "mode":
+				bar.SetMode(MenuBarInWindow)
+				bar.SetMode(MenuBarAuto)
+			case "model":
+				bar.SetMenu(bar.Menu())
+			}
+			_ = host.DispatchEvent(event)
+			host.syncMenuBars()
+			_ = host.DispatchEvent(event)
+			if calls != 0 || menuBarEvent(bar) == event {
+				t.Fatal("批处理期间失效的动作在恢复后被重新接受")
+			}
+			_ = host.DispatchEvent(menuBarEvent(bar))
+			if calls != 1 {
+				t.Fatal("新绑定未执行一次")
+			}
+		})
+	}
+}
+func TestMenuBarRecursiveProjectionAndCommandState(t *testing.T) {
+	_, host, _, bar, leaf := menuBarNativeFixture(t)
+	command := NewCommand()
+	command.SetCheckable(true)
+	command.SetChecked(true)
+	shortcut := NewShortcut(KeyGesture{Key: Key1, Modifiers: ModPrimary})
+	shortcut.SetCommand(command)
+	host.Shortcuts().AddShortcut(shortcut)
+	leaf.SetCommand(command)
+	leaf.SetLabel(`\{format\}运\{bold:行\}`)
+	host.syncMenuBars()
+	projected := host.platformWindow.(*menuBarProbe)
+	entry := projected.items[0].Children[0]
+	if entry.Title != "运行" || !entry.Checked || !entry.Enabled || entry.Shortcut.Key != events.Key1 {
+		t.Fatal("纯文本或命令状态未投影", entry)
+	}
+	id := entry.ID
+	shortcut.SetEnabled(false)
+	host.syncMenuBars()
+	if projected.items[0].Children[0].Shortcut.Key != events.KeyUnknown || projected.items[0].Children[0].ID != id {
+		t.Fatal("快捷键禁用未同步或状态更新改变了身份")
+	}
+	command.SetEnabled(false)
+	host.syncMenuBars()
+	if projected.items[0].Children[0].Enabled {
+		t.Fatal("禁用命令仍可原生选择")
+	}
+	leaf.SetVisible(false)
+	host.syncMenuBars()
+	if len(projected.items[0].Children) != 0 {
+		t.Fatal("隐藏项仍被投影")
+	}
+	// 同一个子树允许出现多次；每个位置须拥有不同原生 ID。
+	child := NewMenu()
+	child.Append("Shared", nil)
+	model := NewMenu()
+	model.AppendSubmenu("A", child)
+	model.AppendSubmenu("B", child)
+	bar.SetMenu(model)
+	host.syncMenuBars()
+	if projected.items[0].Children[0].ID == projected.items[1].Children[0].ID {
+		t.Fatal("共享模型污染原生项身份")
+	}
+	errors := 0
+	bar.ConnectError(func(error) { errors++ })
+	child.AppendSubmenu("Cycle", model)
+	host.syncMenuBars()
+	if errors != 1 || bar.windowHidden || len(projected.items) != 0 {
+		t.Fatal("循环模型未被拒绝")
+	}
+	_ = host
+}
+func TestMenuBarInWindowUsesMenuButtonPath(t *testing.T) {
+	host, root, _, _ := menuButtonGroupFixture(t)
+	bar := NewMenuBar()
+	bar.SetMode(MenuBarInWindow)
+	calls := 0
+	model, _ := menuBarModel(func() { calls++ })
+	bar.SetMenu(model)
+	root.AddChild(bar)
+
+	bar.Arrange(geometry.Rect(0, 0, 250, 40))
+	bar.group.Arrange(geometry.Rect(0, 0, 250, 40))
+	button := bar.group.Children()[0].(*MenuButton)
+	button.Arrange(geometry.Rect(0, 0, 80, 40))
+	_ = host.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Position: geometry.Point{X: 20, Y: 20}, Button: events.PointerButtonLeft})
+	_ = host.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Position: geometry.Point{X: 20, Y: 20}, Button: events.PointerButtonLeft})
+	if !button.Opened() {
+		t.Fatalf("窗口内条目未通过真实按钮路径打开: bar=%v group=%v button=%v pick=%T", bar.Rect(), bar.group.Rect(), button.Rect(), Pick(root, geometry.Point{X: 20, Y: 20}))
+	}
+	_ = host.DispatchEvent(shortcutPress(events.KeyHome, 0))
+	_ = host.DispatchEvent(shortcutPress(events.KeyEnter, 0))
+	if calls != 1 || button.Opened() {
+		t.Fatal("窗口内菜单动作或关闭错误", calls)
+	}
+}
+
+func TestMenuBarInstallFailureAndReentrantError(t *testing.T) {
+	_, host, native, bar, _ := menuBarNativeFixture(t)
+	bar.SetMode(MenuBarInWindow)
+	host.syncMenuBars()
+	native.updateErr = fmt.Errorf("injected install failure")
+	errors := 0
+	bar.ConnectError(func(error) { errors++; bar.SetMode(MenuBarInWindow) })
+	stale := 0
+	bar.ConnectError(func(error) { stale++ })
+	bar.SetMode(MenuBarAuto)
+	host.syncMenuBars()
+	native.updateErr = nil
+	host.syncMenuBars()
+	if errors != 1 || stale != 0 || bar.windowHidden || bar.Mode() != MenuBarInWindow || len(native.items) != 0 {
+		t.Fatal("安装失败或错误回调重入破坏呈现状态", errors, stale)
+	}
+	bar.SetMode(MenuBarAuto)
+	host.syncMenuBars()
+	if !bar.windowHidden {
+		t.Fatal("错误恢复后无法重新呈现")
+	}
+	event := menuBarEvent(bar)
+	host.Destroy()
+	_ = host.DispatchEvent(event)
+	host.syncMenuBars()
+	if len(host.menuBars) != 0 || bar.Root() != nil || host.menuBar != nil || len(native.items) != 0 {
+		t.Fatal("宿主销毁后菜单资源或来源未清理")
+	}
+}
+
+func TestMenuBarRespectsModalScope(t *testing.T) {
+	_, host, _, bar, _ := menuBarNativeFixture(t)
+	root := NewLinearBox(layout.DirectionVertical)
+	host.SetWidget(root)
+	root.AddChild(bar)
+	modal := newTestWidget()
+	root.AddChild(modal)
+	scope := NewModalScope(modal)
+	host.syncMenuBars()
+	if host.platformWindow.(*menuBarProbe).items[0].Enabled {
+		t.Fatal("后台菜单未遵守控件模态边界")
+	}
+	scope.Destroy()
+	scope = NewModalScope(root)
+	host.syncMenuBars()
+	if !host.platformWindow.(*menuBarProbe).items[0].Enabled {
+		t.Fatal("同一模态子树中的菜单被无条件禁用")
+	}
+	scope.Destroy()
+	blockModalInput(host)
+	host.syncMenuBars()
+	if host.platformWindow.(*menuBarProbe).items[0].Enabled {
+		t.Fatal("系统模态输入期间没有撤下菜单可用性")
+	}
+	unblockModalInput(host)
+	host.syncMenuBars()
+	if !host.platformWindow.(*menuBarProbe).items[0].Enabled {
+		t.Fatal("系统模态输入结束后没有恢复菜单")
+	}
+}
+
+func TestMenuBarNativeShortcutsKeepWindowScope(t *testing.T) {
+	app, host, _, bar, leaf := menuBarNativeFixture(t)
+	command := NewCommand()
+	leaf.SetCommand(command)
+	foreign := NewShortcut(KeyGesture{Key: Key9, Modifiers: ModPrimary})
+	foreign.SetCommand(command)
+	local := NewShortcut(KeyGesture{Key: Key1, Modifiers: ModPrimary})
+	local.SetCommand(command)
+	host.Shortcuts().AddShortcut(local)
+	host.syncMenuBars()
+	key := func(b *MenuBar) events.Key {
+		return b.host.platformWindow.(*menuBarProbe).items[0].Children[0].Shortcut.Key
+	}
+	if key(bar) != events.Key1 {
+		t.Fatal("未登记或其他窗口的关联抢走了当前窗口等价键")
+	}
+	host.Shortcuts().RemoveShortcut(local)
+	host.syncMenuBars()
+	if key(bar) != events.KeyUnknown {
+		t.Fatal("移除绑定后仍有原生快捷键")
+	}
+	direct := NewShortcut(local.Gesture())
+	host.Shortcuts().AddShortcut(direct)
+	host.Shortcuts().AddShortcut(local)
+	host.syncMenuBars()
+	if key(bar) != events.KeyUnknown {
+		t.Fatal("更早的独立绑定未阻断同键原生映射")
+	}
+	direct.SetEnabled(false)
+	host.syncMenuBars()
+	if key(bar) != events.Key1 {
+		t.Fatal("绑定可用性变化未更新原生映射")
+	}
+	direct.SetEnabled(true)
+	direct.SetGesture(KeyGesture{Key: Key2, Modifiers: ModPrimary})
+	host.syncMenuBars()
+	if key(bar) != events.Key1 {
+		t.Fatal("独立绑定改键后没有恢复映射")
+	}
+	second := testWindowWithSurface(&window{})
+	second.app = app
+	second.platformWindow = &menuBarProbe{desktopTestWindow: &desktopTestWindow{}}
+	app.windows = append(app.windows, second)
+	other := NewShortcut(KeyGesture{Key: Key2, Modifiers: ModPrimary})
+	other.SetCommand(command)
+	second.Shortcuts().AddShortcut(other)
+	another := NewMenuBar()
+	model, anotherLeaf := menuBarModel(nil)
+	anotherLeaf.SetCommand(command)
+	another.SetMenu(model)
+	second.SetWidget(another)
+	second.syncMenuBars()
+	if key(bar) != events.Key1 || key(another) != events.Key2 {
+		t.Fatal("共享命令的不同窗口快捷键互相污染")
+	}
+	host.Shortcuts().Clear()
+	host.syncMenuBars()
+	if key(bar) != events.KeyUnknown || key(another) != events.Key2 {
+		t.Fatal("清空当前窗口绑定影响其他窗口")
 	}
 }

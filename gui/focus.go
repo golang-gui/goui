@@ -60,7 +60,7 @@ func (d *EventDispatcher) navigateTab(host EventTarget, event events.Event) {
 	var candidates []Widget
 	var visit func(Widget)
 	visit = func(widget Widget) {
-		if widget == nil || widget.base().destroyed || !widget.Visible() || !IsEnabled(widget) || widget.Root() == nil || !widget.CanContainFocus() {
+		if widget == nil || widget.base().destroyed || !windowVisible(widget) || !IsEnabled(widget) || widget.Root() == nil || !widget.CanContainFocus() {
 			return
 		}
 		if widget.Focusable() {
