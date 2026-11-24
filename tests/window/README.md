@@ -63,6 +63,7 @@
 | 命令式标签拖出创建新窗口 | [widgets/tab_detach](widgets/tab_detach/main.go) | 默认连续体验；单标签仅移入已有窗口，不新建；`-expect detached` 等严格模式检查准备、定位、移交及失败保留 |
 | 声明式标签转移、拖出与重建 | [widgets/ui_tab_transfer](widgets/ui_tab_transfer/main.go) | 三平台桌面；Native/Integrated；原页面与 State、声明重建及源移除 |
 | 通用数据树、虚拟化、按需加载、选择与键盘导航 | [widgets/tree_view](widgets/tree_view/main.go) | 三平台桌面；默认 UI，`-gui` 命令式，`-fallback-style` 兜底样式；1x/2x、万行定位、行内按钮、上下文菜单、重建和 Snapshot 断言 |
+| 树、标签、表格右键菜单关闭后的动作执行 | [widgets/context_menu](widgets/context_menu/main.go) | 三平台桌面；`-auto` 验证六种鼠标／Enter 组合；`-nested` 级联、`-dark` 暗色；断言同步执行一次及实际新增副本 |
 | 数据表格、固定表头、列宽调整、排序请求与双向滚动 | [widgets/table](widgets/table/main.go) | 三平台桌面；默认 UI，`-gui` 命令式，`-fallback-style` 兜底样式；`-appearance=plain/zebra/rows/grid/thick` 或 Appearance 切换背景／网格／粗线，检查自绘单元格避让；1x/2x、万行与换行、选择和键盘导航、菜单、拖宽与 Esc 回退、重建、亮暗切换和 Snapshot 断言 |
 
 各入口注释是操作步骤与预期的权威来源；表格仅作主题索引。`go test ./...` 编译这些命令包，
