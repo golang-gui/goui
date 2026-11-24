@@ -2,9 +2,10 @@
 // 环境：三平台桌面；Software/OpenGL（Windows 另有 Direct2D），1x/2x。
 // 启动：go run ./tests/window/ui/menu_editor
 // 初始：正文为空，File/Close 禁用；下拉框与带格式 Tooltip 按钮可用。
+// macOS 的 File/View/Help 在系统菜单栏，其他桌面在窗口内。
 // 操作与预期：File/Open 选择临时文本文件，正文更新且 Close 启用；取消不改正文；
 // Close 清空正文与撤销历史后重新禁用；菜单与下拉框交替打开不能出现旧尺寸/内容；
-// View/Fullscreen 后菜单仍锚定按钮并正确退避，View/Normal 恢复；悬停 Tooltip 显示格式文本。
+// View/Fullscreen 后窗口内菜单仍锚定按钮并正确退避；系统菜单维持原生位置，View/Normal 恢复；悬停 Tooltip 显示格式文本。
 // 平台差异：使用系统文件选择器；状态请求是尽力而为，须观察实际窗口状态，不能只看请求提交。
 // 副作用：只读取选中文件；Help/About 显式启动浏览器，不保存正文。
 // 复位：重启。退出：关闭窗口；全屏时可先选 View/Normal。
@@ -28,8 +29,8 @@ func main() {
 		return ui.Root().StyleSheet(modern.FromSettings(app.Settings())).Windows(
 			ui.Window("main").Content(
 				ui.VBox(
-					ui.MenuButtonGroup(
-						ui.MenuButton("File").Menu(
+					ui.MenuBar(
+						ui.MenuItem("File").Submenu(
 							ui.MenuItem("Open").DefineCommand(
 								ui.Command("file.open").OnActivate(func() {
 									app.FileDialog().OpenFile("main", ui.DialogOptions{Title: "Open text file"}, func(accesses []ui.FileAccess, err error) {
@@ -67,7 +68,7 @@ func main() {
 								}),
 							),
 						),
-						ui.MenuButton("View").Menu(
+						ui.MenuItem("View").Submenu(
 							ui.MenuItem("Normal", func() {
 								app.FindWindow("main").RequestState(gui.WindowStateNormal)
 							}),
@@ -75,7 +76,7 @@ func main() {
 								app.FindWindow("main").RequestState(gui.WindowStateFullscreen)
 							}),
 						),
-						ui.MenuButton("Help").Menu(
+						ui.MenuItem("Help").Submenu(
 							ui.MenuItem("About").DefineCommand(
 								ui.Command("help.about").OnActivate(func() {
 									if err := app.OpenURL("https://github.com/golang-gui/goui"); err != nil {
