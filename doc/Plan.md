@@ -1,5 +1,50 @@
 # Plan
 
+<a id="menu-bar"></a>
+
+## MenuBar 与 macOS 系统菜单（2026-11-24）
+
+- [x] gui.MenuBar／ui.MenuBar 使用普通 Widget／WidgetView 和递归菜单模型，支持 Auto／
+  InWindow。原生呈现保留挂载和命令连接，退出窗口布局、绘制、命中与 Tab，包括作为根
+  控件的零占位；快照报告实际呈现。契约见 [DesignMenuBar](DesignMenuBar.md)。
+- [x] WindowMenuBar.SetMenu 接收复制的值描述，Cocoa 管理主窗口来源、NSMenu 和跟踪安全；
+  业务菜单随窗口释放，基本应用菜单由平台持有并保留 AppKit 自动可用性校验。
+  标准原生绑定集中在 frameworks/appkit。
+- [x] MenuBar 在所属 Window 协调模型、命令、快捷键及有效上下文。重复来源报告一次错误，
+  保留原登记；失败时保留窗口内入口。同步不依赖普通布局或全应用扫描。
+- [x] 鼠标与菜单内键盘确认按动作 ID 经 Window.DispatchEvent 校验；标题／勾选保留有效选择，
+  替换、移除、禁用／隐藏往返、模式切换、卸载和销毁使旧绑定失效。动作 ID 不复用。
+- [x] Key／Modifiers 的唯一定义归 common，events 提供类型 alias 和全部常量转发；各平台
+  输入实现、GUI、声明式层及上层控件继续使用 events 入口，菜单描述引用 common。菜单等价键
+  沿普通 keyDown／IME／Window.DispatchEvent 路径处理，保留局部优先、回调、文字输入和重复策略。
+- [x] UI 原位协调显示属性，保留模型与条目身份；结构和操作种类改变才替换模型。
+  macOS 的菜单 Quit、Command+Q 和 Dock Quit 结束原生循环后复用统一收尾，Shutdown
+  通知前停止定时器及设置监听；有／无窗口均只清理一次。NewEventLoop 保持无参数。
+- [x] Linux amd64／Go 1.25.8：`go test -json ./... -count=1` 共 6456 项测试／子测试通过，
+  82 个有测试包、159 个无测试包，零失败、零条件跳过。共享层 race 和专项 go vet 通过。
+  既有 X11 测试创建私有窗口及 selection，不改变通用剪贴板或业务文件。
+- [x] Linux 独立 X11／xfwm4（关闭合成）／1×：Modern 亮／暗色 OpenGL、Basic Software
+  的 [menu_bar -auto](../tests/window/gui/menu_bar/main.go) 通过，覆盖真实命中布局、一次执行、
+  最新闭包、模式恢复与退出清理；暗色 OpenGL 连续 30 次通过。
+- [x] macOS 15.7.7 arm64／AppKit、窗口 OpenGL／1×：原生入口的两窗口路由、鼠标和
+  Command+1、显示更新、禁用、非法描述保留旧菜单及 Command+Q 通过，A=2／B=1。
+  GUI／UI 的 Auto／InWindow、跟踪期更新、无菜单窗口切换和退出清理通过；裸程序及 .app
+  的既有退出场景通过。原生菜单外观由 AppKit 绘制。
+- [x] 同一 macOS 环境下 menu_bar -keys 的两种模式均通过：局部优先、Shortcut 回调和
+  Command 各一次、AutoRepeat 关／开、空格输入、F6，以及展开时声明式改标题后选择。
+  Repeat 由 AppKit 队列注入，核对事件字段后走原生循环；事件构造使用固定 ABI 签名。
+  物理键盘按住产生重复未单独验收。
+- [x] Windows amd64、macOS arm64／amd64 相关包和菜单入口交叉编译通过；Cocoa 逻辑／
+  绑定测试及 Cocoa／AppKit 专项 vet 通过。Android arm64、iOS arm64 simulator 的预置组件
+  消费者构建通过，仅为构建结果，不增加移动菜单支持承诺。
+- [ ] Foundation 专项 `GOOS=darwin GOARCH=arm64 go vet ./platform/darwin/frameworks/foundation`
+  有三条主分支既有诊断：NSMakeRect 的两个非具名初始化及 NSString.UTF8String 的
+  unsafe.Pointer 转换。已用相同基线文件复查，本功能未改这些实现，不计为 vet 全量通过。
+- [ ] 既有 ui.test 曾有一次启动即 SIGSEGV，后续全仓及基线／当前二进制各 1000 次空启动
+  均通过，尚未稳定复现或归因；保留待查，不列为已修复。
+- [ ] Windows 原生窗口操作、macOS 多屏／混合 DPI、系统亮暗互切及系统模态组合未专项
+  验收。应用菜单角色 API、本地化、Linux 全局菜单、Windows HMENU 和移动导航菜单不在范围内。
+
 ## FileDialog 扩展名过滤（2026-11-22）
 
 - [x] GUI FileFilter 改为 Name／Extensions，DialogOptions 由 GUI 定义、UI 继续薄别名；
@@ -7338,7 +7383,8 @@ error，原样全仓命令报编译失败；恢复其既有尽力而为调用后
   原生混合 DPI、复杂多屏边缘、合成器阴影交叠和独立上下文根的多级原生操作仍需专项验收。
 - [x] 保存 [MenuBar／macOS 原生菜单栏](DesignMenuBar.md) 的独立设计草案，明确数据投影、
   模式、窗口来源及资源边界。
-- [ ] MenuBar 的平台能力／事件、应用角色和多窗口细节待复核；本轮不实现或承诺该能力。
+- [x] MenuBar 平台能力与双模式已完成，后续实现、验证范围和保留缺口见 [MenuBar](#menu-bar)；
+  本节保留子菜单批次的历史记录。
 
 
 ## 子菜单重叠与指针响应（2026-11-23）

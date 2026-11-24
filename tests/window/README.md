@@ -7,6 +7,8 @@
 | 主题 | 入口 | 环境 |
 | --- | --- | --- |
 | 原生应用身份、事件循环、非法外部打开输入 | [platform/application](platform/application/main.go) | 三平台；显式运行真实事件循环，检查 Post/Quit/销毁；不打开外部应用 |
+| 原生应用菜单、等价键与主窗口事实 | [platform/menu_bar](platform/menu_bar/main.go) | macOS；两个 Clone 与 Finish／Quit，真实 AppKit 菜单操作 |
+| 自适应菜单栏、来源与动态更新 | [gui/menu_bar](gui/menu_bar/main.go) | 三平台；-auto 窗口内回归，macOS Auto 需系统菜单真实操作；两窗口、空来源、模式／语言切换 |
 | 原生窗口创建、绘制、状态和装饰 | [platform/window](platform/window/main.go) | `-scenario=basic/states/integrated/native`；平台差异及自动断言见入口 |
 | 基础 Window owner 与 Popup Painter | [platform/popup](platform/popup/main.go) | 三平台；直接 Draw 和原生 Painter 各一帧，五秒超时 |
 | 原生设置查询 | [platform/settings](platform/settings/main.go) | 三平台；明暗、主题色、字体、字号；明确区分不支持与读取失败 |

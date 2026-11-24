@@ -669,16 +669,19 @@ InkBounds、文本布局图片或 Widget 回调接口。Linux arm64 全仓的既
 
 <a id="future-menu-bar"></a>
 
-### MenuBar 与 macOS 原生菜单栏：设计草案，待实现
+### MenuBar 与 macOS 原生菜单栏：首版已实现
 
-- [DesignMenuBar](DesignMenuBar.md) 保存模型驱动的 MenuBar、默认 Auto／InWindow
-  模式、构建与本地呈现分离、窗口来源选择、应用默认菜单和原生动作分发边界。
-- MenuBar 接收递归菜单描述，不接收任意 MenuButton.Child。窗口内呈现依赖完整
-  子菜单与父子协调；macOS 分支将同一模型投影为 NSMenu，由 AppKit 跟踪原生层级。
-- 首版范围为桌面：Windows／当前 Linux 使用窗口内菜单，macOS 支持双模式；Linux
-  全局菜单协议、移动端导航菜单、应用菜单角色 API 等未据此实现或验收。
-- 原生能力与事件接口、呈现参与机制、快捷键去重及多窗口来源细节须先复核验证，
-  再按 platform → gui → ui 集成；本轮只更新设计文档。
+- GUI MenuBar 和 ui.MenuBar 接收递归模型，Auto 在 macOS 使用系统菜单，其他桌面窗口内呈现；
+  InWindow 显式保留窗口内业务菜单。MenuButtonGroup 继续负责自由组合按钮。
+- 原生 Window 通过可选 WindowMenuBar.SetMenu 接收值描述，Cocoa 内部管理主窗口选择与跟踪安全；
+  选择按动作 ID 经 Window.DispatchEvent 校验，不公开来源或投影代次，也不在布局中扫描应用。
+- macOS 原生退出在 Cocoa 内停止事件循环，GUI 复用 Run 返回后的统一清理，与显式 Quit
+  均在 Shutdown 前停止定时器；NewEventLoop 无参数，不增加可取消退出请求或生命周期服务。
+- 原生呈现保留 UI／Command 生命周期并退出窗口布局、绘制、命中与 Tab 导航；提供实际呈现快照。
+- 菜单复用 common 按键事实；原生等价键交回正常按键路径，声明式显示更新保留条目身份，
+  基本系统菜单保留 AppKit 自动校验，标准原生绑定集中在 frameworks/appkit。
+- 契约见 [DesignMenuBar](DesignMenuBar.md)，验证结果与窗口／后端缺口见 [Plan](Plan.md#menu-bar)。
+  应用角色 API、Linux 全局菜单协议、Windows HMENU 和移动导航菜单不在首版范围。
 
 <a id="future-popover-ime"></a>
 
