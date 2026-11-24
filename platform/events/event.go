@@ -35,6 +35,7 @@ const (
 	Destroy
 	Surface
 	Visibility
+	MenuActivate
 )
 
 type EventHandler func(event Event)

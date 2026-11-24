@@ -269,12 +269,7 @@ func (w *Window) emitKey(eventType events.EventType, event NSEvent, repeat bool)
 }
 
 func (w *Window) emitKeyWithModifiers(eventType events.EventType, event NSEvent, modifiers events.Modifiers, repeat bool) {
-	key, location := keyFromMacKeyCode(event.KeyCode())
-	// flagsChanged is not a character-bearing event. AppKit raises an
-	// exception if charactersIgnoringModifiers is read from it.
-	if modifierForKey(key) == 0 {
-		key = logicalMacKey(key, location, event.CharactersIgnoringModifiers().UTF8String())
-	}
+	key, location := keyFromMacEvent(event)
 	var handled bool
 	w.emitEvent(events.KeyEvent{
 		EventType: eventType,
@@ -508,4 +503,14 @@ var macKeyCodeMap = map[uint16]macKey{
 	124: {events.KeyArrowRight, events.KeyLocationStandard},
 	125: {events.KeyArrowDown, events.KeyLocationStandard},
 	126: {events.KeyArrowUp, events.KeyLocationStandard},
+}
+
+func keyFromMacEvent(event NSEvent) (events.Key, events.KeyLocation) {
+	key, location := keyFromMacKeyCode(event.KeyCode())
+	// flagsChanged is not a character-bearing event. AppKit raises an
+	// exception if charactersIgnoringModifiers is read from it.
+	if modifierForKey(key) == 0 {
+		key = logicalMacKey(key, location, event.CharactersIgnoringModifiers().UTF8String())
+	}
+	return key, location
 }

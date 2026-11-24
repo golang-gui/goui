@@ -10,6 +10,7 @@ import (
 	"github.com/golang-gui/goui/platform/darwin/frameworks/quartzcore"
 	"github.com/golang-gui/goui/platform/darwin/frameworks/utils"
 
+	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
 	"github.com/goexlib/cgo"
 )
@@ -24,6 +25,8 @@ func InitAppKit() (err error) {
 
 	initNSEvent()
 	initNSApplication()
+	initNSApplicationDelegate()
+	initNSMenu()
 	initNSAppearance()
 	initNSWindow()
 	initNSWindowDelegate()
@@ -70,6 +73,13 @@ func initNSApplication() {
 	NSApplicationSel.NextEvent = objc.RegisterName("nextEventMatchingMask:untilDate:inMode:dequeue:")
 	NSApplicationSel.Run = objc.RegisterName("run")
 	NSApplicationSel.Stop = objc.RegisterName("stop:")
+	NSApplicationSel.SetMainMenu = objc.RegisterName("setMainMenu:")
+	NSApplicationSel.SetDelegate = objc.RegisterName("setDelegate:")
+	NSApplicationSel.MainWindow = objc.RegisterName("mainWindow")
+	NSApplicationSel.Hide = objc.RegisterName("hide:")
+	NSApplicationSel.HideOtherApplications = objc.RegisterName("hideOtherApplications:")
+	NSApplicationSel.UnhideAllApplications = objc.RegisterName("unhideAllApplications:")
+	NSApplicationSel.Terminate = objc.RegisterName("terminate:")
 }
 
 var (
@@ -86,6 +96,13 @@ var (
 		NextEvent                 objc.SEL
 		Run                       objc.SEL
 		Stop                      objc.SEL
+		SetMainMenu               objc.SEL
+		SetDelegate               objc.SEL
+		MainWindow                objc.SEL
+		Hide                      objc.SEL
+		HideOtherApplications     objc.SEL
+		UnhideAllApplications     objc.SEL
+		Terminate                 objc.SEL
 	}
 )
 
@@ -151,6 +168,116 @@ func (a NSApplication) Run() {
 
 func (a NSApplication) Stop() {
 	a.Send(NSApplicationSel.Stop, 0)
+}
+
+func (a NSApplication) SetMainMenu(menu NSMenu) { a.Send(NSApplicationSel.SetMainMenu, menu) }
+
+func (a NSApplication) SetDelegate(delegate NSApplicationDelegate) {
+	a.Send(NSApplicationSel.SetDelegate, delegate)
+}
+
+func (a NSApplication) MainWindow() NSWindow {
+	return Cast[NSWindow](a.Send(NSApplicationSel.MainWindow))
+}
+
+// NSApplicationDelegate
+
+type NSApplicationDelegate struct{ NSObject }
+type NSApplicationDelegateClass struct{ NSObjectClass }
+type NSApplicationTerminateReply NSUInteger
+
+const (
+	NSTerminateCancel NSApplicationTerminateReply = 0
+	NSTerminateNow    NSApplicationTerminateReply = 1
+	NSTerminateLater  NSApplicationTerminateReply = 2
+)
+
+var NSApplicationDelegateClassId NSApplicationDelegateClass
+var NSApplicationDelegateSel struct{ ApplicationShouldTerminate objc.SEL }
+
+func initNSApplicationDelegate() {
+	NSApplicationDelegateClassId.Class = NSObjectClassId.Class
+	NSApplicationDelegateSel.ApplicationShouldTerminate = objc.RegisterName("applicationShouldTerminate:")
+}
+
+type NSApplicationDelegateOverride struct {
+	ApplicationShouldTerminate func(NSApplicationDelegate, NSApplication) NSApplicationTerminateReply
+}
+
+func (c NSApplicationDelegateClass) Override(name string, override NSApplicationDelegateOverride) (NSApplicationDelegateClass, error) {
+	var methods []objc.MethodDef
+	if override.ApplicationShouldTerminate != nil {
+		methods = append(methods, objc.MethodDef{Cmd: NSApplicationDelegateSel.ApplicationShouldTerminate,
+			Fn: func(self objc.ID, _ objc.SEL, app objc.ID) NSApplicationTerminateReply {
+				return override.ApplicationShouldTerminate(Cast[NSApplicationDelegate](self), Cast[NSApplication](app))
+			}})
+	}
+	class, err := objc.RegisterClass(name, c.Class, nil, nil, methods)
+	return NSApplicationDelegateClass{NSObjectClass{Class: class}}, err
+}
+
+func (c NSApplicationDelegateClass) New() NSApplicationDelegate {
+	return Cast[NSApplicationDelegate](c.Send(NSObjectSel.New))
+}
+
+// NSMenu and NSMenuItem
+
+type NSMenu struct{ NSObject }
+type NSMenuClass struct{ NSObjectClass }
+type NSMenuItem struct{ NSObject }
+type NSMenuItemClass struct{ NSObjectClass }
+
+var NSMenuClassId NSMenuClass
+var NSMenuItemClassId NSMenuItemClass
+var NSMenuSel struct{ InitWithTitle, AddItem, SetAutoenablesItems, SetDelegate, CancelTracking objc.SEL }
+var NSMenuDelegateSel struct{ MenuWillOpen, MenuDidClose, MenuHasKeyEquivalent objc.SEL }
+var NSMenuItemSel struct{ InitWithTitle, SeparatorItem, SetSubmenu, SetTarget, SetEnabled, SetState, SetTitle, SetKeyEquivalent, SetKeyEquivalentModifierMask objc.SEL }
+
+func initNSMenu() {
+	NSMenuDelegateSel.MenuWillOpen = objc.RegisterName("menuWillOpen:")
+	NSMenuDelegateSel.MenuDidClose = objc.RegisterName("menuDidClose:")
+	NSMenuDelegateSel.MenuHasKeyEquivalent = objc.RegisterName("menuHasKeyEquivalent:forEvent:target:action:")
+	NSMenuClassId.Class = objc.GetClass("NSMenu")
+	NSMenuItemClassId.Class = objc.GetClass("NSMenuItem")
+	NSMenuSel.InitWithTitle = objc.RegisterName("initWithTitle:")
+	NSMenuSel.AddItem = objc.RegisterName("addItem:")
+	NSMenuSel.SetAutoenablesItems = objc.RegisterName("setAutoenablesItems:")
+	NSMenuSel.SetDelegate = objc.RegisterName("setDelegate:")
+	NSMenuSel.CancelTracking = objc.RegisterName("cancelTracking")
+	NSMenuItemSel.InitWithTitle = objc.RegisterName("initWithTitle:action:keyEquivalent:")
+	NSMenuItemSel.SeparatorItem = objc.RegisterName("separatorItem")
+	NSMenuItemSel.SetSubmenu = objc.RegisterName("setSubmenu:")
+	NSMenuItemSel.SetTarget = objc.RegisterName("setTarget:")
+	NSMenuItemSel.SetEnabled = objc.RegisterName("setEnabled:")
+	NSMenuItemSel.SetState = objc.RegisterName("setState:")
+	NSMenuItemSel.SetTitle = objc.RegisterName("setTitle:")
+	NSMenuItemSel.SetKeyEquivalent = objc.RegisterName("setKeyEquivalent:")
+	NSMenuItemSel.SetKeyEquivalentModifierMask = objc.RegisterName("setKeyEquivalentModifierMask:")
+}
+
+func (c NSMenuClass) Alloc() NSMenu { return Cast[NSMenu](c.Send(NSObjectSel.Alloc)) }
+func (m NSMenu) InitWithTitle(title NSString) NSMenu {
+	return Cast[NSMenu](m.Send(NSMenuSel.InitWithTitle, title))
+}
+func (m NSMenu) AddItem(item NSMenuItem)        { m.Send(NSMenuSel.AddItem, item) }
+func (m NSMenu) SetAutoenablesItems(value bool) { m.Send(NSMenuSel.SetAutoenablesItems, value) }
+func (m NSMenu) SetDelegate(value NSObject)     { m.Send(NSMenuSel.SetDelegate, value) }
+func (m NSMenu) CancelTracking()                { m.Send(NSMenuSel.CancelTracking) }
+func (c NSMenuItemClass) Alloc() NSMenuItem     { return Cast[NSMenuItem](c.Send(NSObjectSel.Alloc)) }
+func (c NSMenuItemClass) SeparatorItem() NSMenuItem {
+	return Cast[NSMenuItem](c.Send(NSMenuItemSel.SeparatorItem))
+}
+func (i NSMenuItem) InitWithTitle(title NSString, action objc.SEL, key NSString) NSMenuItem {
+	return Cast[NSMenuItem](i.Send(NSMenuItemSel.InitWithTitle, title, action, key))
+}
+func (i NSMenuItem) SetSubmenu(menu NSMenu)          { i.Send(NSMenuItemSel.SetSubmenu, menu) }
+func (i NSMenuItem) SetTarget(target NSObject)       { i.Send(NSMenuItemSel.SetTarget, target) }
+func (i NSMenuItem) SetEnabled(value bool)           { i.Send(NSMenuItemSel.SetEnabled, value) }
+func (i NSMenuItem) SetState(value NSInteger)        { i.Send(NSMenuItemSel.SetState, value) }
+func (i NSMenuItem) SetTitle(value NSString)         { i.Send(NSMenuItemSel.SetTitle, value) }
+func (i NSMenuItem) SetKeyEquivalent(value NSString) { i.Send(NSMenuItemSel.SetKeyEquivalent, value) }
+func (i NSMenuItem) SetKeyEquivalentModifierMask(value NSEventModifierFlags) {
+	i.Send(NSMenuItemSel.SetKeyEquivalentModifierMask, value)
 }
 
 // NSAppearance
@@ -627,6 +754,10 @@ func (c NSGraphicsContext) CGContext() CGContextRef {
 
 func initNSEvent() {
 	NSEventClassId.Class = objc.GetClass("NSEvent")
+	NSEventSel.KeyEventWithType = objc.RegisterName("keyEventWithType:location:modifierFlags:timestamp:windowNumber:context:characters:charactersIgnoringModifiers:isARepeat:keyCode:")
+	// Fixed arguments preserve Darwin arm64 packing of the trailing BOOL and
+	// unsigned short, which the variadic message helper cannot express.
+	purego.RegisterFunc(&nsKeyEventWithType, uintptr(NSEventClassId.Send(NSObjectSel.MethodForSelector, NSEventSel.KeyEventWithType)))
 	NSEventSel.OtherEventWithType = objc.RegisterName("otherEventWithType:location:modifierFlags:timestamp:windowNumber:context:subtype:data1:data2:")
 	NSEventSel.LocationInWindow = objc.RegisterName("locationInWindow")
 	NSEventSel.Type = objc.RegisterName("type")
@@ -651,6 +782,7 @@ var (
 	NSEventClassId NSEventClass
 	NSEventSel     struct {
 		OtherEventWithType            objc.SEL
+		KeyEventWithType              objc.SEL
 		LocationInWindow              objc.SEL
 		Type                          objc.SEL
 		Timestamp                     objc.SEL
@@ -717,7 +849,29 @@ const (
 	NSEventTypeApplicationDefined NSEventType = 15
 )
 
+// AppKit character equivalents differ from key-down text for deletion keys.
+const (
+	NSBackspaceCharacter    rune = 0x0008
+	NSDeleteCharacter       rune = 0x007f
+	NSUpArrowFunctionKey    rune = 0xf700
+	NSDownArrowFunctionKey  rune = 0xf701
+	NSLeftArrowFunctionKey  rune = 0xf702
+	NSRightArrowFunctionKey rune = 0xf703
+	NSF1FunctionKey         rune = 0xf704
+	NSInsertFunctionKey     rune = 0xf727
+	NSHomeFunctionKey       rune = 0xf729
+	NSEndFunctionKey        rune = 0xf72b
+	NSPageUpFunctionKey     rune = 0xf72c
+	NSPageDownFunctionKey   rune = 0xf72d
+)
+
 type NSEventModifierFlags int
+
+var nsKeyEventWithType func(objc.ID, objc.SEL, NSEventType, NSPoint, NSEventModifierFlags, NSTimeInterval, NSInteger, objc.ID, objc.ID, objc.ID, bool, uint16) objc.ID
+
+func (c NSEventClass) KeyEventWithType(eventType NSEventType, location NSPoint, flags NSEventModifierFlags, timestamp NSTimeInterval, windowNumber NSInteger, context NSGraphicsContext, characters, unmodified NSString, repeat bool, keyCode uint16) NSEvent {
+	return Cast[NSEvent](nsKeyEventWithType(objc.ID(c.Class), NSEventSel.KeyEventWithType, eventType, location, flags, timestamp, windowNumber, context.ID, characters.ID, unmodified.ID, repeat, keyCode))
+}
 
 func (c NSEventClass) OtherEventWithType(eventType NSEventType, location NSPoint, modifierFlags NSEventModifierFlags, timestamp NSTimeInterval, windowNumber NSInteger, context NSGraphicsContext, subtype cgo.Short, data1, data2 NSInteger) (res NSEvent) {
 	res.ID = c.Send(NSEventSel.OtherEventWithType, eventType, location, modifierFlags, timestamp, windowNumber, context, subtype, data1, data2)
@@ -1787,6 +1941,8 @@ func initNSWindowDelegate() {
 	NSWindowDelegateSel.WindowDidResize = objc.RegisterName("windowDidResize:")
 	NSWindowDelegateSel.WindowDidBecomeKey = objc.RegisterName("windowDidBecomeKey:")
 	NSWindowDelegateSel.WindowDidResignKey = objc.RegisterName("windowDidResignKey:")
+	NSWindowDelegateSel.WindowDidBecomeMain = objc.RegisterName("windowDidBecomeMain:")
+	NSWindowDelegateSel.WindowDidResignMain = objc.RegisterName("windowDidResignMain:")
 	NSWindowDelegateSel.WindowDidChangeOcclusionState = objc.RegisterName("windowDidChangeOcclusionState:")
 	NSWindowDelegateSel.WindowShouldZoom = objc.RegisterName("windowShouldZoom:toFrame:")
 	NSWindowDelegateSel.WindowDidMiniaturize = objc.RegisterName("windowDidMiniaturize:")
@@ -1807,6 +1963,8 @@ var (
 		WindowDidResize                objc.SEL
 		WindowDidBecomeKey             objc.SEL
 		WindowDidResignKey             objc.SEL
+		WindowDidBecomeMain            objc.SEL
+		WindowDidResignMain            objc.SEL
 		WindowDidChangeOcclusionState  objc.SEL
 		WindowShouldZoom               objc.SEL
 		WindowDidMiniaturize           objc.SEL
@@ -1830,6 +1988,8 @@ type (
 		WindowDidResize                func(self NSWindowDelegate, notification NSNotification)
 		WindowDidBecomeKey             func(self NSWindowDelegate, notification NSNotification)
 		WindowDidResignKey             func(self NSWindowDelegate, notification NSNotification)
+		WindowDidBecomeMain            func(self NSWindowDelegate, notification NSNotification)
+		WindowDidResignMain            func(self NSWindowDelegate, notification NSNotification)
 		WindowShouldZoom               func(self NSWindowDelegate, sender NSWindow, frame NSRect) bool
 		WindowDidMiniaturize           func(self NSWindowDelegate, notification NSNotification)
 		WindowDidDeminiaturize         func(self NSWindowDelegate, notification NSNotification)
@@ -1893,6 +2053,17 @@ func ImplementNSWindowDelegate(className string, override NSWindowDelegateOverri
 			},
 		})
 	}
+	if override.WindowDidBecomeMain != nil {
+		methods = append(methods, objc.MethodDef{Cmd: NSWindowDelegateSel.WindowDidBecomeMain, Fn: func(self objc.ID, _ objc.SEL, arg objc.ID) {
+			override.WindowDidBecomeMain(Cast[NSWindowDelegate](self), Cast[NSNotification](arg))
+		}})
+	}
+	if override.WindowDidResignMain != nil {
+		methods = append(methods, objc.MethodDef{Cmd: NSWindowDelegateSel.WindowDidResignMain, Fn: func(self objc.ID, _ objc.SEL, arg objc.ID) {
+			override.WindowDidResignMain(Cast[NSWindowDelegate](self), Cast[NSNotification](arg))
+		}})
+	}
+
 	if override.WindowDidChangeOcclusionState != nil {
 		methods = append(methods, objc.MethodDef{
 			Cmd: NSWindowDelegateSel.WindowDidChangeOcclusionState,
