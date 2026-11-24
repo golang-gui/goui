@@ -11,6 +11,9 @@
 // 子菜单主体应重叠父菜单约 4 DIP。移到其他父项，高亮即时跟随，旧展开项只保留较弱背景；
 // 旧子层在约 250 ms 后关闭或替换。移到宿主留白应清空整链活动项，但保持已展开的菜单。
 // 向子层斜移仍可跨行到达，进入后不被旧计时关闭；屏幕右侧翻转后同样验证。
+// 慢速跨过子菜单阴影：父项内每次移动约 1 DIP，进入阴影仍保持 Hover，离开父行或进入
+// 子层主体时只保留较弱展开色。左右展开均不得来回闪烁；F6 的 MENU ROWS 输出应与
+// 可见高亮一致。真正移出菜单链时所有活动项清空，已展开路径仍保留。
 // F6/Check 输出 ASSERT PASS、JSON 状态及窗口局部 DIP 的 BOUNDS，仅供观察和定位。
 // 自动场景还验证最新动作闭包、主题重建、空菜单、禁用和不同组隔离；没有语义动作接口。
 // 1x/1.5x/2x、Basic/Modern、亮暗重复。最终记录真实图像资源类型及 PixelScale。
@@ -119,6 +122,27 @@ func main() {
 		for _, id := range []string{"file", "edit", "view", "run", "empty", "disabled", "other", "rebuild", "dark", "check", "input"} {
 			r := app.FindWidget("menus", id).Snapshot().Bounds
 			fmt.Printf("BOUNDS %s %g %g %g %g\n", id, r.X, r.Y, r.Width, r.Height)
+		}
+		for index, popup := range win.Popovers() {
+			type rowState struct {
+				Text              string
+				Selected, Hovered bool
+				Expanded          bool
+			}
+			var rows []rowState
+			var visit func(gui.WidgetInfo)
+			visit = func(info gui.WidgetInfo) {
+				if menu, ok := info.Attributes[gui.MenuItemInfoKey].(gui.MenuItemInfo); ok {
+					rows = append(rows, rowState{info.Text, info.Selected, info.Hovered, menu.Expanded})
+				}
+				for _, child := range info.Children {
+					visit(child)
+				}
+			}
+			visit(popup.Widget().Snapshot())
+			data, err := json.Marshal(rows)
+			must(err)
+			fmt.Printf("MENU ROWS %d %s\n", index, data)
 		}
 		fmt.Printf("ASSERT PASS %s\n", data)
 	}
