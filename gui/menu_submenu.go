@@ -92,6 +92,9 @@ func (pm *PopoverMenu) closeChild() {
 	}
 }
 func (pm *PopoverMenu) endOccurrence() {
+	if root := pm.rootMenu(); root.pointerSource == pm {
+		root.pointerSource = nil
+	}
 	pm.closeChild()
 	pm.modelHandles.Disconnect()
 	pm.modelHandles = nil
@@ -316,7 +319,12 @@ func (pm *PopoverMenu) filterEvent(e events.Event) bool {
 		return true
 	}
 	pointer, ok := e.(events.PointerEvent)
-	if !ok || pointer.EventType != events.PointerDown && pointer.EventType != events.PointerUp && pointer.EventType != events.PointerMove {
+	if !ok {
+		return false
+	}
+	switch pointer.EventType {
+	case events.PointerDown, events.PointerUp, events.PointerMove, events.PointerEnter, events.PointerLeave:
+	default:
 		return false
 	}
 	host := pm.nativeHost()
@@ -324,8 +332,19 @@ func (pm *PopoverMenu) filterEvent(e events.Event) bool {
 		return true
 	}
 	root := pm.rootMenu()
+	if pointer.EventType == events.PointerLeave {
+		// A move or enter on another native surface supersedes this leave.
+		// Its coordinates may be stale; never use them to pick a destination.
+		if root.pointerSource != nil && root.pointerSource != pm {
+			return true
+		}
+		root.pointerSource = nil
+		root.clearPointerExcept(nil)
+		return true
+	}
+	root.pointerSource = pm
 	// An accepted gesture owns move/up before body hit testing.
-	if pointer.EventType != events.PointerDown {
+	if pointer.EventType == events.PointerMove || pointer.EventType == events.PointerUp {
 		for layer := root; layer != nil && layer.Visible(); layer = layer.child {
 			p := layer.nativeHost()
 			if p != nil && p.dispatcher.captureTarget != nil {
@@ -342,6 +361,9 @@ func (pm *PopoverMenu) filterEvent(e events.Event) bool {
 	position := geometry.Point{X: pointer.Position.X + host.requestedPosition.X, Y: pointer.Position.Y + host.requestedPosition.Y}
 	picked := root.layerAt(position)
 	if picked != nil {
+		if !root.clearPointerExcept(picked) {
+			return true
+		}
 		for p := picked.parent; p != nil; p = p.parent {
 			p.cancelHover()
 		}
@@ -351,12 +373,28 @@ func (pm *PopoverMenu) filterEvent(e events.Event) bool {
 			}
 			picked.keyboardChild = false
 		}
+		p := picked.nativeHost()
+		if p == nil || p.owner != host.owner || !modalWidgetAllowed(picked.anchor) {
+			return true
+		}
+		if pointer.EventType == events.PointerEnter {
+			pointer.Position = geometry.Point{X: position.X - p.requestedPosition.X, Y: position.Y - p.requestedPosition.Y}
+			epoch, occurrence := root.epoch, picked.epoch
+			_ = p.dispatcher.DispatchEvent(p, pointer)
+			if root.Visible() && root.epoch == epoch && picked.epoch == occurrence && picked.nativeHost() == p {
+				// An ancestor may already logically contain the pointer. In that
+				// case no new contains-enter is emitted for its menu controller.
+				picked.pointerEnter(subtractPoint(pointer.Position, absOrigin(picked.content)))
+			}
+			return true
+		}
 		if picked == pm {
 			return false
 		}
-		p := picked.nativeHost()
 		pointer.Position = geometry.Point{X: position.X - p.requestedPosition.X, Y: position.Y - p.requestedPosition.Y}
-		_ = p.DispatchEvent(pointer)
+		// The source already passed Popover's input checks. Keep its identity
+		// while the selected layer uses the ordinary dispatcher/controller path.
+		_ = p.dispatcher.DispatchEvent(p, pointer)
 		return true
 	}
 	if pointer.EventType == events.PointerDown {
@@ -368,10 +406,46 @@ func (pm *PopoverMenu) filterEvent(e events.Event) bool {
 		}
 		return true
 	}
-	if pointer.EventType == events.PointerMove {
+	if pointer.EventType == events.PointerMove || pointer.EventType == events.PointerEnter {
 		root.observeOwnerPointer(events.PointerEvent{EventType: events.PointerMove, Position: position})
 	}
 	return false
+}
+
+// A native surface may cover another menu with its shadow. Only the layer
+// picked by body geometry owns logical hover; crossing callbacks may replace
+// the chain, so stop before touching the replacement's state.
+func (pm *PopoverMenu) clearPointerExcept(picked *PopoverMenu) bool {
+	root := pm.rootMenu()
+	host := root.nativeHost()
+	if host == nil {
+		return false
+	}
+	owner := surfaceCore(host.owner)
+	epoch, shown := root.epoch, owner.popoversShown
+	for layer := root; layer != nil && layer.Visible(); layer = layer.child {
+		if layer == picked {
+			continue
+		}
+		host := layer.nativeHost()
+		if host == nil {
+			return false
+		}
+		if picked == nil {
+			layer.content.selectItem(nil)
+			layer.pointerValid = false
+			layer.pointerLeave()
+		}
+		if host.dispatcher.pointerInside {
+			leave := host.dispatcher.pointerEvent
+			leave.EventType = events.PointerLeave
+			_ = host.dispatcher.DispatchEvent(host, leave)
+		}
+		if !root.Visible() || root.epoch != epoch || owner.popoversShown != shown || layer.nativeHost() != host {
+			return false
+		}
+	}
+	return true
 }
 func (pm *PopoverMenu) returnToParent() {
 	parent := pm.parent
@@ -525,6 +599,17 @@ func (pm *PopoverMenu) observeOwnerPointer(event events.PointerEvent) {
 func (pm *PopoverMenu) pointerLeave() {
 	pm.cancelHover()
 	pm.protectUntil = time.Time{}
+}
+
+func (pm *PopoverMenu) pointerEnter(position geometry.Point) {
+	pm.content.selectPointer(position)
+	if pm.pointerValid && pm.pointer == position {
+		return
+	}
+	pm.cancelAncestorHover()
+	if host := pm.nativeHost(); host != nil && !host.showing {
+		pm.pointerMotion(position, true)
+	}
 }
 
 func (pm *PopoverMenu) pointerMotion(position geometry.Point, motion bool) {
