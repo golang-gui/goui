@@ -24,8 +24,8 @@
 | `GtkPopover::closed` | `gui.Popover.ConnectClosed` | 信号放宿主（Popover），控件转发 |
 
 **已实现**：递归子菜单、跨层键盘导航及侧向定位，见
-[子菜单设计](DesignMenuSubmenu.md)。图标、[MenuBar／macOS 原生菜单栏](DesignMenuBar.md)、
-模型级关闭信号和富控件菜单项不属于当前 Menu 契约；富内容可组合普通 Popover。
+[子菜单设计](DesignMenuSubmenu.md)；[MenuBar／macOS 原生菜单栏](DesignMenuBar.md)
+使用同一模型分别呈现。图标、模型级关闭信号和富控件菜单项不属于当前 Menu 契约；富内容可组合普通 Popover。
 工作区约束、UI 菜单声明、通用 OnContextMenu 和 TabBar 上下文菜单沿用现有支持。
 
 **ui 层**：MenuButton／MenuItem／MenuSeparator 只协调 GUI 模型。通过
@@ -34,7 +34,7 @@
 
 MenuButton 分组切换另见 [MenuButton 分组设计](DesignMenuButtonGroup.md)，
 通过局部 MenuButtonGroup 容器自动关联后代菜单按钮，
-允许普通按钮混排，不以子菜单实现为前置。后续 MenuBar 接收菜单数据，独立管理
+允许普通按钮混排，不以子菜单实现为前置。MenuBar 接收菜单数据，独立管理
 窗口内／系统菜单栏呈现；不将任意 MenuButton.Child 投影为原生菜单内容。
 
 ## 2. MenuModel 复用 ListData
@@ -205,3 +205,13 @@ CommandRef(object) 借用外部对象。命令 ID 独立于 Widget ID，同一�
 上下文菜单转换使用 MenuFor(ctx,...)，按模型观察生命期维持作用域引用；临时模型没有
 定义宿主，不接受 DefineCommand。Button 保持普通回调，Command 不成为 View、
 Snapshot Widget 或自动化动作捷径。完整契约见 [DesignCommand](DesignCommand.md)。
+
+## 声明式显示更新与身份（2026-11-24）
+
+MenuButton 与 MenuBar 共用菜单协调。结构、条目种类及命令引用种类相同的更新，
+保留 Menu 和 MenuItem；标题、启用和可见性通过现有 setter 原位同步，动作闭包读取
+同位置的最新声明。不以显示属性变化重建整棵菜单模型。
+
+标题更新保留动作绑定；禁用、隐藏及其往返仍通过 MenuItem 的 revision 使旧选择失效。
+结构或操作种类改变仍重建模型，不把显示更新与动作身份失效混为一类。setter 和作用域
+更新可能重入或销毁宿主，继续同步前核对当前声明式状态和控件生命期。
