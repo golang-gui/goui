@@ -19,6 +19,7 @@ func (pm *PopoverMenu) Destroy() {
 	if pm.destroyed {
 		return
 	}
+	pm.rootMenu().activationRevision++
 	pm.destroyed = true
 	pm.Hide()
 	if pm.child != nil {

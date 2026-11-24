@@ -191,6 +191,9 @@ type PopoverMenu struct {
 	pointerValid  bool
 	protectUntil  time.Time
 	modelHandles  signal.Handles
+
+	// Only the root uses this revision. Cleanup must not cancel a selected action.
+	activationRevision uint64
 }
 
 const menuScrollbarGap = 6
@@ -213,7 +216,12 @@ func (pm *PopoverMenu) SetModal(modal bool) {
 
 // SetMenu installs the model and refreshes the content, including when the same
 // instance is supplied. Model implementations need not be comparable.
+// Clearing it in a close callback releases presentation data without canceling
+// an already selected action. Installing a non-nil model supersedes that action.
 func (pm *PopoverMenu) SetMenu(m MenuModel) {
+	if m != nil {
+		pm.rootMenu().activationRevision++
+	}
 	pm.epoch++
 	pm.closeChild()
 	pm.model = m
@@ -256,6 +264,7 @@ func (pm *PopoverMenu) show(placement PopoverPlacement, pos geometry.Point) erro
 	if pm.model == nil {
 		return nil
 	}
+	pm.rootMenu().activationRevision++
 	if pm.content == nil {
 		pm.content = newMenuContent(pm.model, pm.maxHeight, pm.activate)
 		pm.content.presenter = pm
@@ -334,11 +343,15 @@ func (pm *PopoverMenu) ConnectClosed(fn func()) signal.Handle {
 }
 
 func (pm *PopoverMenu) contains(mi *MenuItem) bool {
-	if pm.model == nil {
+	return menuContains(pm.model, mi)
+}
+
+func menuContains(model MenuModel, mi *MenuItem) bool {
+	if model == nil {
 		return true
 	}
-	for i := 0; i < pm.model.ItemsCount(); i++ {
-		if pm.model.ItemAt(i) == mi {
+	for i := 0; i < model.ItemsCount(); i++ {
+		if model.ItemAt(i) == mi {
 			return true
 		}
 	}
@@ -356,7 +369,7 @@ func (pm *PopoverMenu) activate(mi *MenuItem) {
 	root := pm.rootMenu()
 	// Release modal input before invoking user code. A close callback can replace
 	// or disable the operation; never dispatch the old click to a new target.
-	action, command, revision := mi.Action(), mi.Command(), mi.revision
+	action, command, revision, model := mi.Action(), mi.Command(), mi.revision, pm.model
 	var commandRevision uint64
 	if command != nil {
 		commandRevision = command.revision
@@ -365,26 +378,32 @@ func (pm *PopoverMenu) activate(mi *MenuItem) {
 	if surface, ok := anchorSurface(pm.anchor); ok {
 		owner = surfaceCore(surface)
 	}
+	var shown uint64
+	if owner != nil {
+		shown = owner.popoversShown
+	}
 	type ancestorSource struct {
-		menu     *PopoverMenu
+		model    MenuModel
 		item     *MenuItem
 		revision uint64
 	}
 	var ancestors []ancestorSource
 	for p := pm; p.parent != nil; p = p.parent {
 		item := p.parent.expanded
-		ancestors = append(ancestors, ancestorSource{p.parent, item, item.revision})
+		ancestors = append(ancestors, ancestorSource{p.parent.model, item, item.revision})
 	}
-	closedEpoch := root.epoch + 1
+	activationRevision := root.activationRevision
 	root.Hide()
-	if owner != nil && owner.destroyed || root.destroyed || root.anchor != nil && root.anchor.base().destroyed {
+	if owner != nil && (owner.destroyed || owner.popoversShown != shown || owner.modalTarget != nil) || root.destroyed || root.anchor != nil && root.anchor.base().destroyed {
 		return
 	}
-	if !mi.available() || !mi.Visible() || mi.Command() != command || mi.revision != revision || root.Visible() || root.epoch != closedEpoch || !pm.contains(mi) {
+	// Closing may clear the presenters' models and hide them repeatedly. Validate
+	// the captured sources, while rejecting any replacement or new presentation.
+	if !mi.available() || !mi.Visible() || mi.Command() != command || mi.revision != revision || root.Visible() || root.activationRevision != activationRevision || !menuContains(model, mi) {
 		return
 	}
 	for _, source := range ancestors {
-		if source.item.revision != source.revision || !source.menu.contains(source.item) || !source.item.available() || !source.item.Visible() {
+		if source.item.revision != source.revision || !menuContains(source.model, source.item) || !source.item.available() || !source.item.Visible() {
 			return
 		}
 	}
