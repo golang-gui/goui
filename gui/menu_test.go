@@ -253,6 +253,141 @@ func TestPopoverMenuActivateIgnoresDisabled(t *testing.T) {
 	}
 }
 
+// 正常关闭会清空临时模型和重复 Hide，不能因此丢失已经选中的动作。
+func TestPopoverMenuActivationSurvivesCloseCleanup(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		for _, command := range []bool{false, true} {
+			for _, keyboard := range []bool{false, true} {
+				t.Run(fmt.Sprint(nested, command, keyboard), func(t *testing.T) {
+					w, _, makePopup := transientFixture(t)
+					pm := NewPopoverMenu(makePopup(nil).anchor)
+					t.Cleanup(pm.Destroy)
+					calls, closed := 0, 0
+					run := func() {
+						calls++
+						if pm.Visible() || len(w.Popovers()) != 0 || w.modalTarget != nil || closed != 1 {
+							t.Fatal("动作执行前没有完成整链关闭和模态释放")
+						}
+					}
+					leaf := NewMenuItem("Run", run)
+					if command {
+						c := NewCommand()
+						c.ConnectActivate(run)
+						leaf.SetCommand(c)
+					}
+					// 切片模型不可比较，不能用 interface 相等判断模型是否被替换。
+					var model MenuModel = menuSliceModel{leaf}
+					if nested {
+						model = menuSliceModel{NewMenuItem("Branch", nil)}
+						model.ItemAt(0).SetSubmenu(menuSliceModel{leaf})
+					}
+					pm.SetMenu(model)
+					if err := pm.ShowAt(geometry.Point{}); err != nil {
+						t.Fatal(err)
+					}
+					key := func(k events.Key) {
+						t.Helper()
+						if err := w.DispatchEvent(shortcutPress(k, 0)); err != nil {
+							t.Fatal(err)
+						}
+					}
+					key(events.KeyHome)
+					target := pm
+					if nested {
+						key(events.KeyArrowRight)
+						target = pm.child
+						target.ConnectClosed(func() { target.SetMenu(nil); target.Hide() })
+					}
+					pm.ConnectClosed(func() {
+						closed++
+						pm.SetMenu(nil)
+						pm.Hide()
+					})
+					if keyboard {
+						key(events.KeyEnter)
+					} else {
+						point := target.rowFor(leaf).windowRect().Center()
+						for _, kind := range []events.EventType{events.PointerDown, events.PointerUp} {
+							if err := target.popover.DispatchEvent(events.PointerEvent{EventType: kind, Position: point, Button: events.PointerButtonLeft}); err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+					if calls != 1 || pm.Menu() != nil || pm.Visible() {
+						t.Fatal("关闭清理跳过了已选动作或重复执行", calls)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestPopoverMenuCleanupStillRejectsStaleActivation(t *testing.T) {
+	for _, change := range []string{"replace-model", "reopen-hide", "other-popup", "remove", "disable-cycle", "command-cycle", "replace-action", "destroy-owner", "destroy-menu"} {
+		t.Run(change, func(t *testing.T) {
+			w, _, makePopup := transientFixture(t)
+			pm := NewPopoverMenu(makePopup(nil).anchor)
+			t.Cleanup(pm.Destroy)
+			calls := 0
+			model := NewMenu()
+			item := model.Append("Run", func() { calls++ })
+			var command *Command
+			if change == "command-cycle" {
+				command = NewCommand()
+				command.ConnectActivate(func() { calls++ })
+				item.SetCommand(command)
+			}
+			pm.SetMenu(model)
+			if err := pm.ShowAt(geometry.Point{}); err != nil {
+				t.Fatal(err)
+			}
+			done := false
+			pm.ConnectClosed(func() {
+				if done {
+					return
+				}
+				done = true
+				pm.SetMenu(nil)
+				switch change {
+				case "replace-model":
+					pm.SetMenu(menuSliceModel{item})
+					pm.SetMenu(nil)
+				case "reopen-hide":
+					pm.SetMenu(model)
+					if err := pm.ShowAt(geometry.Point{}); err != nil {
+						t.Fatal(err)
+					}
+					pm.Hide()
+				case "other-popup":
+					other := makePopup(nil)
+					if err := other.Show(); err != nil {
+						t.Fatal(err)
+					}
+					other.Hide()
+				case "remove":
+					model.Remove(0)
+				case "disable-cycle":
+					item.SetEnabled(false)
+					item.SetEnabled(true)
+				case "command-cycle":
+					command.SetEnabled(false)
+					command.SetEnabled(true)
+				case "replace-action":
+					item.SetAction(func() { calls += 10 })
+				case "destroy-owner":
+					w.Destroy()
+				case "destroy-menu":
+					pm.Destroy()
+				}
+			})
+			pm.activate(item)
+			if calls != 0 {
+				t.Fatal("清理后仍执行了失效动作", calls)
+			}
+		})
+	}
+}
+
 func TestPopoverMenuVisibleFalseBeforeShow(t *testing.T) {
 	m := NewMenu()
 	m.Append("Copy", func() {})
@@ -1639,7 +1774,7 @@ func TestMenuSubmenuModelChangesAndCycles(t *testing.T) {
 }
 
 func TestMenuSubmenuCloseCallbackInvalidatesActivation(t *testing.T) {
-	for _, change := range []string{"disable", "replace", "reopen", "owner"} {
+	for _, change := range []string{"disable", "replace", "reopen", "owner", "clear-remove-parent", "clear-remove-leaf", "clear-replace-child", "destroy-child"} {
 		t.Run(change, func(t *testing.T) {
 			w, _, makePopup := transientFixture(t)
 			pm := NewPopoverMenu(makePopup(nil).anchor)
@@ -1666,6 +1801,19 @@ func TestMenuSubmenuCloseCallbackInvalidatesActivation(t *testing.T) {
 					}
 				case "owner":
 					w.Destroy()
+				case "clear-remove-parent":
+					pm.SetMenu(nil)
+					m.Remove(0)
+				case "clear-remove-leaf":
+					pm.SetMenu(nil)
+					pm.child.SetMenu(nil)
+					child.Remove(0)
+				case "clear-replace-child":
+					pm.SetMenu(nil)
+					pm.child.SetMenu(menuSliceModel{leaf})
+					pm.child.SetMenu(nil)
+				case "destroy-child":
+					pm.child.Destroy()
 				}
 			})
 			t.Cleanup(h.Disconnect)
