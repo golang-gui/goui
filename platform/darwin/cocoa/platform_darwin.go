@@ -20,6 +20,9 @@ import (
 )
 
 type Platform struct {
+	loop     *EventLoop
+	menus    *menuBar
+	delegate NSApplicationDelegate
 }
 
 var platform *Platform
@@ -58,13 +61,31 @@ func newPlatform(appId string) (p *Platform, err error) {
 	AutoReleasePool(func() {
 		app := NSApplicationClassId.SharedApplication()
 		app.SetActivationPolicy(NSApplicationActivationPolicyRegular)
-		app.FinishLaunching()
+		err = p.initApplicationDelegate()
+		if err == nil {
+			app.FinishLaunching()
+		}
 	})
-	return
+	if err == nil {
+		p.menus, err = newMenuBar(p)
+	}
+	if err != nil {
+		p.Destroy()
+		return nil, err
+	}
+	return p, nil
 }
 
 func (p *Platform) Destroy() {
-
+	if p.menus != nil {
+		p.menus.destroy()
+		p.menus = nil
+	}
+	if p.delegate.ID != 0 {
+		NSApp.SetDelegate(NSApplicationDelegate{})
+		p.delegate.Release()
+		p.delegate = NSApplicationDelegate{}
+	}
 }
 
 func (p *Platform) Name() string {
@@ -72,7 +93,53 @@ func (p *Platform) Name() string {
 }
 
 func (p *Platform) NewEventLoop() (common.EventLoop, error) {
-	return newEventLoop()
+	l, err := newEventLoop()
+	if err != nil {
+		return nil, err
+	}
+	p.loop = l
+	return l, nil
+}
+
+var applicationDelegateClass NSApplicationDelegateClass
+
+func (p *Platform) initApplicationDelegate() error {
+	if applicationDelegateClass.Class == 0 {
+		var err error
+		applicationDelegateClass, err = NSApplicationDelegateClassId.Override("GouiApplicationDelegate", NSApplicationDelegateOverride{
+			ApplicationShouldTerminate: func(_ NSApplicationDelegate, _ NSApplication) NSApplicationTerminateReply {
+				if platform == nil || platform.loop == nil {
+					return NSTerminateNow
+				}
+				platform.quit()
+				// AppKit must not exit the process before Run returns to its
+				// owner. The owner performs ordinary cleanup, without a veto.
+				return NSTerminateCancel
+			},
+		})
+		if err != nil {
+			return err
+		}
+	}
+	p.delegate = applicationDelegateClass.New()
+	if p.delegate.ID == 0 {
+		return errors.New("create application delegate failed")
+	}
+	NSApp.SetDelegate(p.delegate)
+	return nil
+}
+
+func (p *Platform) quit() {
+	if p.loop == nil {
+		return
+	}
+	if b := p.menus; b != nil && b.busy() {
+		b.quitting = true
+		b.cancelTracking()
+		b.schedule()
+		return
+	}
+	p.loop.Quit()
 }
 
 func (p *Platform) NewImage(width, height uint) (common.Image, error) {

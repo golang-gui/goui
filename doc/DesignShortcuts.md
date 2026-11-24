@@ -12,6 +12,15 @@
 
 ## 按键与修饰键契约
 
+Key、Modifiers 及其常量归 platform/common，输入事件直接引用同一类型，
+原生菜单等能力也复用这些值。events 依赖 common，common 不依赖 events；
+迁移仅改变类型归属，保留枚举数值、实际键名与修饰位含义。
+为保留原有调用入口，events.Key／Modifiers 是 common 对应类型的 alias，
+events.KeyXXX／ModifierXXX 常量显式转发 common 值；事件、菜单和旧调用方之间
+可直接赋值，不要求转换。各平台输入实现、GUI 与上层控件继续从 events 使用按键和
+修饰键；MenuItem 等独立能力描述从 common 引用定义，类型归属不要求迁移既有用法。
+新增共享按键或修饰位时同步维护兼容入口。
+
 | 名称 | 平台事实 |
 | --- | --- |
 | Control | 始终为 Ctrl/Control |

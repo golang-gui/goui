@@ -120,6 +120,7 @@ func initNSObject() {
 	NSObjectSel.Autorelease = objc.RegisterName("autorelease")
 	NSObjectSel.RetainCount = objc.RegisterName("retainCount")
 	NSObjectSel.RespondsToSelector = objc.RegisterName("respondsToSelector:")
+	NSObjectSel.MethodForSelector = objc.RegisterName("methodForSelector:")
 }
 
 var (
@@ -133,6 +134,7 @@ var (
 		Autorelease        objc.SEL
 		RetainCount        objc.SEL
 		RespondsToSelector objc.SEL
+		MethodForSelector  objc.SEL
 	}
 )
 

@@ -1,26 +1,145 @@
 package events
 
-import "github.com/golang-gui/goui/core/geometry"
+import (
+	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/platform/common"
+)
 
-// Modifiers reports aggregate native modifier state, without left/right sides.
-// A modifier remains active while either side is held. KeyEvent.Location
-// identifies the side of the key that changed, not the sides of this mask.
-type Modifiers uint16
+// Key is an alias of the shared logical key type.
+type Key = common.Key
+
+// Modifiers is an alias of the shared native modifier mask.
+type Modifiers = common.Modifiers
 
 const (
-	ModifierShift Modifiers = 1 << iota
-	ModifierControl
-	ModifierAlt
-	// ModifierSuper is Linux Super.
-	ModifierSuper
-	// ModifierCommand is macOS Command, distinct from Win and Super.
-	ModifierCommand
-	// ModifierWin is the Windows logo key, distinct from Super and Command.
-	ModifierWin
-	// ModifierOption is macOS Option, distinct from Windows/Linux Alt.
-	ModifierOption
-	// ModifierAltGraph is X11's Level3 modifier, not a synthesized Ctrl+Alt.
-	ModifierAltGraph
+	ModifierShift    = common.ModifierShift
+	ModifierControl  = common.ModifierControl
+	ModifierAlt      = common.ModifierAlt
+	ModifierSuper    = common.ModifierSuper
+	ModifierCommand  = common.ModifierCommand
+	ModifierWin      = common.ModifierWin
+	ModifierOption   = common.ModifierOption
+	ModifierAltGraph = common.ModifierAltGraph
+)
+
+const (
+	KeyUnknown        = common.KeyUnknown
+	KeyEscape         = common.KeyEscape
+	KeyEnter          = common.KeyEnter
+	KeyTab            = common.KeyTab
+	KeyBackspace      = common.KeyBackspace
+	KeyDelete         = common.KeyDelete
+	KeyInsert         = common.KeyInsert
+	KeySpace          = common.KeySpace
+	KeyArrowLeft      = common.KeyArrowLeft
+	KeyArrowRight     = common.KeyArrowRight
+	KeyArrowUp        = common.KeyArrowUp
+	KeyArrowDown      = common.KeyArrowDown
+	KeyHome           = common.KeyHome
+	KeyEnd            = common.KeyEnd
+	KeyPageUp         = common.KeyPageUp
+	KeyPageDown       = common.KeyPageDown
+	KeyShift          = common.KeyShift
+	KeyControl        = common.KeyControl
+	KeyAlt            = common.KeyAlt
+	KeySuper          = common.KeySuper
+	KeyCapsLock       = common.KeyCapsLock
+	KeyNumLock        = common.KeyNumLock
+	KeyPrintScreen    = common.KeyPrintScreen
+	KeyScrollLock     = common.KeyScrollLock
+	KeyPause          = common.KeyPause
+	KeyF1             = common.KeyF1
+	KeyF2             = common.KeyF2
+	KeyF3             = common.KeyF3
+	KeyF4             = common.KeyF4
+	KeyF5             = common.KeyF5
+	KeyF6             = common.KeyF6
+	KeyF7             = common.KeyF7
+	KeyF8             = common.KeyF8
+	KeyF9             = common.KeyF9
+	KeyF10            = common.KeyF10
+	KeyF11            = common.KeyF11
+	KeyF12            = common.KeyF12
+	KeyF13            = common.KeyF13
+	KeyF14            = common.KeyF14
+	KeyF15            = common.KeyF15
+	KeyF16            = common.KeyF16
+	KeyF17            = common.KeyF17
+	KeyF18            = common.KeyF18
+	KeyF19            = common.KeyF19
+	KeyF20            = common.KeyF20
+	KeyF21            = common.KeyF21
+	KeyF22            = common.KeyF22
+	KeyF23            = common.KeyF23
+	KeyF24            = common.KeyF24
+	KeyA              = common.KeyA
+	KeyB              = common.KeyB
+	KeyC              = common.KeyC
+	KeyD              = common.KeyD
+	KeyE              = common.KeyE
+	KeyF              = common.KeyF
+	KeyG              = common.KeyG
+	KeyH              = common.KeyH
+	KeyI              = common.KeyI
+	KeyJ              = common.KeyJ
+	KeyK              = common.KeyK
+	KeyL              = common.KeyL
+	KeyM              = common.KeyM
+	KeyN              = common.KeyN
+	KeyO              = common.KeyO
+	KeyP              = common.KeyP
+	KeyQ              = common.KeyQ
+	KeyR              = common.KeyR
+	KeyS              = common.KeyS
+	KeyT              = common.KeyT
+	KeyU              = common.KeyU
+	KeyV              = common.KeyV
+	KeyW              = common.KeyW
+	KeyX              = common.KeyX
+	KeyY              = common.KeyY
+	KeyZ              = common.KeyZ
+	Key0              = common.Key0
+	Key1              = common.Key1
+	Key2              = common.Key2
+	Key3              = common.Key3
+	Key4              = common.Key4
+	Key5              = common.Key5
+	Key6              = common.Key6
+	Key7              = common.Key7
+	Key8              = common.Key8
+	Key9              = common.Key9
+	KeyMinus          = common.KeyMinus
+	KeyEqual          = common.KeyEqual
+	KeyBracketLeft    = common.KeyBracketLeft
+	KeyBracketRight   = common.KeyBracketRight
+	KeyBackslash      = common.KeyBackslash
+	KeySemicolon      = common.KeySemicolon
+	KeyQuote          = common.KeyQuote
+	KeyComma          = common.KeyComma
+	KeyPeriod         = common.KeyPeriod
+	KeySlash          = common.KeySlash
+	KeyBackquote      = common.KeyBackquote
+	KeyNumpad0        = common.KeyNumpad0
+	KeyNumpad1        = common.KeyNumpad1
+	KeyNumpad2        = common.KeyNumpad2
+	KeyNumpad3        = common.KeyNumpad3
+	KeyNumpad4        = common.KeyNumpad4
+	KeyNumpad5        = common.KeyNumpad5
+	KeyNumpad6        = common.KeyNumpad6
+	KeyNumpad7        = common.KeyNumpad7
+	KeyNumpad8        = common.KeyNumpad8
+	KeyNumpad9        = common.KeyNumpad9
+	KeyNumpadAdd      = common.KeyNumpadAdd
+	KeyNumpadSubtract = common.KeyNumpadSubtract
+	KeyNumpadMultiply = common.KeyNumpadMultiply
+	KeyNumpadDivide   = common.KeyNumpadDivide
+	KeyNumpadDecimal  = common.KeyNumpadDecimal
+	KeyNumpadEnter    = common.KeyNumpadEnter
+	KeyCommand        = common.KeyCommand
+	KeyWin            = common.KeyWin
+	KeyOption         = common.KeyOption
+	KeyAltGraph       = common.KeyAltGraph
+	KeyMenu           = common.KeyMenu
 )
 
 type PointerButton uint8
@@ -87,133 +206,6 @@ const (
 	KeyLocationLeft
 	KeyLocationRight
 	KeyLocationNumpad
-)
-
-type Key uint32
-
-const (
-	KeyUnknown Key = iota
-	KeyEscape
-	KeyEnter
-	KeyTab
-	KeyBackspace
-	KeyDelete
-	KeyInsert
-	KeySpace
-	KeyArrowLeft
-	KeyArrowRight
-	KeyArrowUp
-	KeyArrowDown
-	KeyHome
-	KeyEnd
-	KeyPageUp
-	KeyPageDown
-	KeyShift
-	KeyControl
-	KeyAlt
-	KeySuper
-	KeyCapsLock
-	KeyNumLock
-	KeyPrintScreen
-	KeyScrollLock
-	KeyPause
-	KeyF1
-	KeyF2
-	KeyF3
-	KeyF4
-	KeyF5
-	KeyF6
-	KeyF7
-	KeyF8
-	KeyF9
-	KeyF10
-	KeyF11
-	KeyF12
-	KeyF13
-	KeyF14
-	KeyF15
-	KeyF16
-	KeyF17
-	KeyF18
-	KeyF19
-	KeyF20
-	KeyF21
-	KeyF22
-	KeyF23
-	KeyF24
-	KeyA
-	KeyB
-	KeyC
-	KeyD
-	KeyE
-	KeyF
-	KeyG
-	KeyH
-	KeyI
-	KeyJ
-	KeyK
-	KeyL
-	KeyM
-	KeyN
-	KeyO
-	KeyP
-	KeyQ
-	KeyR
-	KeyS
-	KeyT
-	KeyU
-	KeyV
-	KeyW
-	KeyX
-	KeyY
-	KeyZ
-	Key0
-	Key1
-	Key2
-	Key3
-	Key4
-	Key5
-	Key6
-	Key7
-	Key8
-	Key9
-	KeyMinus
-	KeyEqual
-	KeyBracketLeft
-	KeyBracketRight
-	KeyBackslash
-	KeySemicolon
-	KeyQuote
-	KeyComma
-	KeyPeriod
-	KeySlash
-	KeyBackquote
-	KeyNumpad0
-	KeyNumpad1
-	KeyNumpad2
-	KeyNumpad3
-	KeyNumpad4
-	KeyNumpad5
-	KeyNumpad6
-	KeyNumpad7
-	KeyNumpad8
-	KeyNumpad9
-	KeyNumpadAdd
-	KeyNumpadSubtract
-	KeyNumpadMultiply
-	KeyNumpadDivide
-	KeyNumpadDecimal
-	KeyNumpadEnter
-	// Append new keys to preserve existing numeric event/protocol values.
-	KeyCommand
-	// KeyWin is the Windows logo key. Location identifies its left/right side.
-	KeyWin
-	// KeyOption is macOS Option, distinct from Alt.
-	KeyOption
-	// KeyAltGraph is X11 ISO_Level3_Shift; its physical side is unspecified.
-	KeyAltGraph
-	// KeyMenu is the dedicated context-menu key, when provided by the keyboard.
-	KeyMenu
 )
 
 type KeyCode uint32

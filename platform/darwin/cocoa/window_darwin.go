@@ -30,6 +30,7 @@ type Window struct {
 	closed       bool
 	closing      bool // AppKit is already inside close; do not call it recursively
 	destroying   bool
+	menuHost     bool
 
 	parent    common.Window
 	buttons   events.PointerButtons
@@ -56,7 +57,8 @@ type Window struct {
 	resize        *windowResize
 	resizeRelease bool // consume the matching up even when a resize is cancelled
 	dnd           *dragService
-	dragDown      NSEvent // retained mouse-down event required by AppKit's dragging API
+	menu          *nativeMenu // owned by this window; AppKit installs it as needed
+	dragDown      NSEvent     // retained mouse-down event required by AppKit's dragging API
 }
 
 // newNativeWindow creates the NSWindow shared by top-level windows and popups:
@@ -68,6 +70,7 @@ func newNativeWindow(onEvent events.EventHandler, class NSWindowClass, styleMask
 		onEvent:     onEvent,
 		state:       common.WindowStateUnknown,
 		transparent: transparent,
+		menuHost:    class == windowClass,
 	}
 	AutoReleasePool(func() {
 		win.delegate = delegateClass.Alloc()
@@ -152,6 +155,13 @@ func (w *Window) Destroy() {
 		return
 	}
 	w.destroying = true
+	if platform != nil && platform.menus != nil && platform.menus.current == w {
+		platform.menus.setWindow(nil)
+	}
+	if w.menu != nil {
+		w.menu.destroy()
+		w.menu = nil
+	}
 	cancelFileDialogs(w)
 	defer func() { w.destroying = false }()
 	notify := !w.closed
@@ -372,6 +382,8 @@ func initWindowClass() (err error) {
 		WindowDidResize:                windowDidResize,
 		WindowDidBecomeKey:             windowDidBecomeKey,
 		WindowDidResignKey:             windowDidResignKey,
+		WindowDidBecomeMain:            windowDidBecomeMain,
+		WindowDidResignMain:            windowDidResignMain,
 		WindowDidMiniaturize:           windowDidChangePresentation,
 		WindowDidDeminiaturize:         windowDidChangePresentation,
 		WindowWillEnterFullScreen:      windowWillChangeFullscreen,
@@ -1265,4 +1277,23 @@ var _ common.WindowManagement = (*Window)(nil)
 
 func (w *Window) SurfaceState() common.SurfaceState {
 	return common.SurfaceState{Ready: w.NativeHandle() != 0, Generation: 1}
+}
+
+func windowDidBecomeMain(self NSWindowDelegate, notification NSNotification) {
+	self.Retain()
+	defer self.Release()
+	if w := windowMap[Cast[NSWindow](notification.Object())]; w != nil {
+		if platform != nil && platform.menus != nil {
+			platform.menus.setWindow(w)
+		}
+	}
+}
+func windowDidResignMain(self NSWindowDelegate, notification NSNotification) {
+	self.Retain()
+	defer self.Release()
+	if w := windowMap[Cast[NSWindow](notification.Object())]; w != nil {
+		if platform != nil && platform.menus != nil && platform.menus.current == w {
+			platform.menus.setWindow(nil)
+		}
+	}
 }

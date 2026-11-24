@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/platform/common"
 )
 
 func TestKeyDefaultResponse(t *testing.T) {
@@ -142,5 +143,23 @@ func TestWheelEventContract(t *testing.T) {
 	}
 	if event.Modifiers != ModifierShift|ModifierControl {
 		t.Fatalf("WheelEvent.Modifiers = %v", event.Modifiers)
+	}
+}
+
+func TestInputCompatibilityAliases(t *testing.T) {
+	// 回调签名、map 键类型和指针必须直接互通，不能只是底层数值相同。
+	var labels map[common.Key]string = map[Key]string{KeyS: "save"}
+	var receive func(common.Key, common.Modifiers) = func(key Key, modifiers Modifiers) {
+		if labels[key] != "save" || modifiers != ModifierControl|ModifierShift {
+			t.Fatal("旧入口声明不能直接消费 common 输入值")
+		}
+	}
+	event := KeyEvent{Key: KeyS, Modifiers: ModifierControl | ModifierShift}
+	receive(event.Key, event.Modifiers)
+	var key *common.Key = &event.Key
+	var modifiers *common.Modifiers = &event.Modifiers
+	*key, *modifiers = KeyF24, ModifierCommand|ModifierOption
+	if event.Key != common.KeyF24 || event.Modifiers != common.ModifierCommand|common.ModifierOption {
+		t.Fatal("兼容入口与共享类型的值不一致")
 	}
 }

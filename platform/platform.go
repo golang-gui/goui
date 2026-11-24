@@ -56,6 +56,9 @@ type (
 	DialogOptions      = common.DialogOptions
 	FileDialog         = common.FileDialog
 	FileAccess         = common.FileAccess
+	WindowMenuBar      = common.WindowMenuBar
+	MenuItem           = common.MenuItem
+	MenuShortcut       = common.MenuShortcut
 )
 
 const (
