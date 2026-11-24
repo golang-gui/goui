@@ -1,5 +1,24 @@
 # Plan
 
+## 子菜单阴影边缘悬停（2026-11-24）
+
+- [x] 原生指针接收者与逻辑命中层分离，Enter／Move 统一按菜单主体命中；子层阴影
+  仍命中父行时保持 Hover，忽略交接后迟到的旧表面 Leave。真正离开时即时清活动项，
+  保留展开路径。同步 Hover 快照并防止 crossing 回调重开分支后被旧事件清理。
+  配色、开关延迟和重叠距离保持原契约，见 [DesignMenuSubmenu](DesignMenuSubmenu.md)。
+- [x] 扩展既有菜单单元测试与 [menu_group](../tests/window/gui/menu_group/main.go)：
+  左右阴影命中、交错 Enter／Leave、当前位置同步、真实离开与回调重入均通过；
+  两项新增回归在修复前实现上失败，修复后通过。窗口检查增加行 Hover／选择／展开快照。
+- [x] Linux amd64：`go test -json ./... -count=1` 共 6460 项测试／子测试通过，
+  82 个有测试包通过、159 个无测试包单列，零失败、零条件跳过。既有 X11 测试创建
+  私有窗口与 selection。`go test -race ./gui ./ui -count=1`、`go vet ./gui ./ui` 通过；
+  Windows amd64／macOS arm64 的 GUI／UI 测试目标与窗口程序交叉编译通过。
+- [x] macOS 15.7.7 arm64／OpenGL、Windows 10 19045 amd64／Direct2D，均为 Modern
+  亮色／1×：左右展开逐物理像素慢移通过，父行内保持 Hover，进入子层后只留展开提示；
+  移出整链保留展开路径，三级键盘激活恰好一次，窗口关闭清理及 `menu_group -auto` 通过。
+  Windows 修复前对照捕获了阴影边缘的两色交替，修复后两端均未观察到该交替。
+- [ ] 本轮未重复验收其他主题、缩放和绘制后端；未修改平台实现或绘制契约。
+
 <a id="menu-bar"></a>
 
 ## MenuBar 与 macOS 系统菜单（2026-11-24）
