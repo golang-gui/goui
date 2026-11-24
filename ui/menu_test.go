@@ -102,13 +102,13 @@ func TestMenuButtonFingerprintSkipsUnchangedMenu(t *testing.T) {
 		t.Fatal("unchanged menu should not be rebuilt")
 	}
 
-	// Changing an item rebuilds the model.
+	// 显示和可用性原位更新；禁用仍由 MenuItem 的 revision 使旧动作失效。
 	root.update(MenuButton("File").Menu(
 		MenuItem("Open", func() {}),
 		MenuItem("Close", func() {}).Enabled(false),
 	))
-	if got := first.Menu(); got == firstModel {
-		t.Fatal("changed menu should rebuild the model")
+	if got := first.Menu(); got != firstModel || got.ItemAt(1).Enabled() {
+		t.Fatal("可用性更新替换模型或未禁用条目")
 	}
 }
 
@@ -457,5 +457,82 @@ func TestMenuSubmenuDefinesCommandsInHostScope(t *testing.T) {
 	}
 	if calls != 22 {
 		t.Fatal("卸载后仍可执行命令")
+	}
+}
+
+func TestMenuBarCoordinatesLatestDeclarations(t *testing.T) {
+	root := newRoot()
+	calls := 0
+	build := func(value int) *MenuBarView {
+		return MenuBar(MenuItem("File").Submenu(MenuItem("Run", func() { calls = value }))).Mode(gui.MenuBarInWindow)
+	}
+	bar := root.update(build(1)).(*gui.MenuBar)
+	model := bar.Menu()
+	leaf := model.ItemAt(0).Submenu().ItemAt(0)
+	if bar.Mode() != gui.MenuBarInWindow || len(bar.Children()) != 1 {
+		t.Fatal("菜单栏声明未协调到 GUI")
+	}
+	root.update(build(2))
+	if bar.Menu() != model {
+		t.Fatal("仅回调更新重建了菜单模型")
+	}
+	leaf.Action()()
+	if calls != 2 {
+		t.Fatal("菜单栏动作使用了旧声明")
+	}
+	root.update(MenuBar(MenuItem("文件").Submenu(MenuItem("运行", func() { calls = 3 }).Visible(false))))
+	if bar.Menu() != model || bar.Menu().ItemAt(0).Submenu().ItemAt(0).Visible() || bar.Mode() != gui.MenuBarAuto {
+		t.Fatal("语言、可见性或模式没有同步")
+	}
+}
+func TestMenuBarCommandsShareScopeReconciliation(t *testing.T) {
+	root := newRoot()
+	calls := 0
+	build := func(value int) View {
+		return CommandScope(MenuBar(MenuItem("File").Submenu(
+			MenuItem("Run").DefineCommand(Command("run").OnActivate(func() { calls = value })),
+			MenuItem("Missing").Command("missing"),
+		)))
+	}
+	bar := root.update(build(1)).(*gui.MenuBar)
+	model := bar.Menu()
+	child := model.ItemAt(0).Submenu()
+	command := child.ItemAt(0).Command()
+	if command == nil || !command.Enabled() || child.ItemAt(1).Command().Enabled() {
+		t.Fatal("菜单栏未复用命令范围解析")
+	}
+	root.update(build(4))
+	if bar.Menu() != model || child.ItemAt(0).Command() != command {
+		t.Fatal("更新丢失了模型或命令身份")
+	}
+	command.Activate()
+	if calls != 4 {
+		t.Fatal("命令未使用最新闭包")
+	}
+	root.update(Label("replacement"))
+	command.Activate()
+	if calls != 4 {
+		t.Fatal("卸载未释放菜单命令连接")
+	}
+}
+
+func TestMenuBarDisplayUpdatePreservesItemIdentity(t *testing.T) {
+	root := newRoot()
+	calls := 0
+	build := func(title string, value int) *MenuBarView {
+		return MenuBar(MenuItem(title).Submenu(MenuItem(title, func() { calls = value })))
+	}
+	bar := root.update(build("Run", 1)).(*gui.MenuBar)
+	model := bar.Menu()
+	branch := model.ItemAt(0)
+	children := branch.Submenu()
+	leaf := children.ItemAt(0)
+	root.update(build("运行", 2))
+	if bar.Menu() != model || model.ItemAt(0) != branch || branch.Submenu() != children || children.ItemAt(0) != leaf || leaf.Label() != "运行" {
+		t.Fatal("仅标题更新替换了模型或动作项身份")
+	}
+	leaf.Action()()
+	if calls != 2 {
+		t.Fatal("保留的动作项未读取最新声明")
 	}
 }

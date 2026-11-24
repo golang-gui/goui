@@ -22,6 +22,7 @@ type MenuItemView struct {
 	separator  bool
 	submenu    []*MenuItemView
 	branch     bool
+	hidden     bool
 }
 
 // MenuItem creates an enabled, single-selectable menu entry.
@@ -52,7 +53,7 @@ func (m *MenuItemView) CommandRef(command *gui.Command) *MenuItemView {
 }
 
 // DefineCommand supplies a scope-local definition and uses it for this entry.
-// It requires a mounted MenuButton below a CommandScope. Temporary Menu/MenuFor
+// It requires a mounted menu presenter below a CommandScope. Temporary Menu/MenuFor
 // models must use Command or CommandRef instead. nil clears the operation.
 func (m *MenuItemView) DefineCommand(command *CommandView) *MenuItemView {
 	m.definition, m.commandID, m.commandRef, m.action = command, "", nil, nil
@@ -78,6 +79,10 @@ func (m *MenuItemView) Enabled(enabled bool) *MenuItemView {
 	return m
 }
 
+// Visible controls whether the entry is presented. Hidden entries cannot
+// activate through a stale presentation.
+func (m *MenuItemView) Visible(visible bool) *MenuItemView { m.hidden = !visible; return m }
+
 // MenuSeparator creates a divider row. It is never selectable and carries no
 // action or label.
 func MenuSeparator() *MenuItemView {
@@ -95,9 +100,16 @@ type MenuButtonView struct {
 	onOpenError func(error)
 }
 
-type menuButtonState struct {
-	lastSig     string // fingerprint of the last-applied menu items
-	button      *gui.MenuButton
+type menuModelTarget interface {
+	gui.Widget
+	Destroyed() bool
+	Menu() gui.MenuModel
+	SetMenu(gui.MenuModel)
+}
+
+type menuState struct {
+	lastSig     string // structural fingerprint of the last-applied menu items
+	target      menuModelTarget
 	items       []*MenuItemView
 	onClosed    func()
 	onOpenError func(error)
@@ -137,7 +149,7 @@ func (v *MenuButtonView) OnOpenError(fn func(error)) *MenuButtonView { v.onOpenE
 
 func (v *MenuButtonView) Mount(ctx BuildContext) gui.Widget {
 	button := gui.NewMenuButton()
-	s := &menuButtonState{button: button}
+	s := &menuState{target: button}
 	s.handles = signal.Handles{
 		button.ConnectClosed(func() {
 			if s.onClosed != nil {
@@ -155,7 +167,7 @@ func (v *MenuButtonView) Mount(ctx BuildContext) gui.Widget {
 }
 
 func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
-	button, s := widget.(*gui.MenuButton), ctx.State().(*menuButtonState)
+	button, s := widget.(*gui.MenuButton), ctx.State().(*menuState)
 	s.onClosed, s.onOpenError = v.onClosed, v.onOpenError
 	s.items = append(s.items[:0], v.items...)
 	if ctx.State() != s || button.Destroyed() {
@@ -165,17 +177,21 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 	if ctx.State() != s || button.Destroyed() {
 		return
 	}
+	s.updateMenu(ctx)
+}
+
+func (s *menuState) updateMenu(ctx BuildContext) {
 	var definitions []*CommandView
-	walkMenuItems(v.items, func(item *MenuItemView) {
+	walkMenuItems(s.items, func(item *MenuItemView) {
 		if !item.separator && item.definition != nil {
 			definitions = append(definitions, item.definition)
 		}
 	})
 	s.definitions.update(ctx, nil, definitions, "menu-command:")
-	if ctx.State() != s || button.Destroyed() {
+	if ctx.State() != s || s.target.Destroyed() {
 		return
 	}
-	sig := signatureOf(v.items)
+	sig := signatureOf(s.items)
 	if sig == s.lastSig {
 		references := s.commands
 		for i := range references {
@@ -183,8 +199,20 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 		}
 		// Object identity is intentionally separate from the presentation
 		// signature. Swapping borrowed commands retains the open menu model.
-		syncMenuRefs(s.button.Menu(), v.items, func(entry *gui.MenuItem, item *MenuItemView) {
-			if ctx.State() == s && !button.Destroyed() && item.commandRef != nil {
+		syncMenuRefs(s.target.Menu(), s.items, func(entry *gui.MenuItem, item *MenuItemView) {
+			if ctx.State() != s || s.target.Destroyed() {
+				return
+			}
+			entry.SetEnabled(item.enabled)
+			if ctx.State() != s || s.target.Destroyed() {
+				return
+			}
+			entry.SetVisible(!item.hidden)
+			if ctx.State() != s || s.target.Destroyed() {
+				return
+			}
+			entry.SetLabel(item.label)
+			if ctx.State() == s && !s.target.Destroyed() && item.commandRef != nil {
 				entry.SetCommand(item.commandRef)
 			}
 		})
@@ -194,7 +222,7 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 		s.commands[i].clear()
 	}
 	referenceCount := 0
-	walkMenuItems(v.items, func(item *MenuItemView) {
+	walkMenuItems(s.items, func(item *MenuItemView) {
 		if !item.separator && !item.branch && item.commandID != "" {
 			referenceCount++
 		}
@@ -210,17 +238,19 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 				continue
 			}
 			if item.separator {
-				model.AppendSeparator()
+				entry := model.AppendSeparator()
+				entry.SetVisible(!item.hidden)
 				continue
 			}
 			path := append(append([]int(nil), parent...), index)
 			entry := model.Append(item.label, func() {
 				latest := menuItemAt(s.items, path)
-				if latest != nil && !latest.separator && !latest.branch && latest.enabled && latest.action != nil {
+				if latest != nil && !latest.separator && !latest.branch && latest.enabled && !latest.hidden && latest.action != nil {
 					latest.action()
 				}
 			})
 			entry.SetEnabled(item.enabled)
+			entry.SetVisible(!item.hidden)
 			if item.branch {
 				entry.SetSubmenu(build(item.submenu, path))
 			} else if item.commandID != "" {
@@ -229,21 +259,27 @@ func (v *MenuButtonView) Update(ctx BuildContext, widget gui.Widget) {
 			} else if item.commandRef != nil {
 				entry.SetCommand(item.commandRef)
 			}
-			if ctx.State() != s || button.Destroyed() {
+			if ctx.State() != s || s.target.Destroyed() {
 				return model
 			}
 		}
 		return model
 	}
-	model := build(v.items, nil)
-	if ctx.State() != s || button.Destroyed() {
+	model := build(s.items, nil)
+	if ctx.State() != s || s.target.Destroyed() {
 		return
 	}
 	s.lastSig = sig
-	button.SetMenu(model)
+	s.target.SetMenu(model)
 }
 func (v *MenuButtonView) Unmount(ctx BuildContext, widget gui.Widget) {
-	if s, ok := ctx.State().(*menuButtonState); ok {
+	clearMenuState(ctx)
+	button := widget.(*gui.MenuButton)
+	button.Close()
+}
+
+func clearMenuState(ctx BuildContext) {
+	if s, ok := ctx.State().(*menuState); ok {
 		s.handles.Disconnect()
 		s.definitions.clear()
 		for i := range s.commands {
@@ -254,9 +290,47 @@ func (v *MenuButtonView) Unmount(ctx BuildContext, widget gui.Widget) {
 		s.onClosed = nil
 		s.onOpenError = nil
 	}
-	button := widget.(*gui.MenuButton)
-	button.Close()
 }
+
+// MenuBarView declares a model-based menu bar. Top-level entries must use
+// Submenu. Native presentation does not unmount this view or its commands.
+type MenuBarView struct {
+	ViewBase[MenuBarView]
+	items   []*MenuItemView
+	mode    gui.MenuBarMode
+	onError func(error)
+}
+
+// MenuBar declares an adaptive menu bar from top-level submenu entries.
+func MenuBar(items ...*MenuItemView) *MenuBarView {
+	v := &MenuBarView{items: items}
+	v.Self = v
+	return v
+}
+func (v *MenuBarView) Mode(mode gui.MenuBarMode) *MenuBarView { v.mode = mode; return v }
+func (v *MenuBarView) OnError(fn func(error)) *MenuBarView    { v.onError = fn; return v }
+func (v *MenuBarView) Mount(ctx BuildContext) gui.Widget {
+	bar := gui.NewMenuBar()
+	s := &menuState{target: bar}
+	s.handles = signal.Handles{bar.ConnectError(func(err error) {
+		if s.onOpenError != nil {
+			s.onOpenError(err)
+		}
+	})}
+	ctx.SetState(s)
+	return bar
+}
+func (v *MenuBarView) Update(ctx BuildContext, widget gui.Widget) {
+	s := ctx.State().(*menuState)
+	s.onOpenError = v.onError
+	s.items = append(s.items[:0], v.items...)
+	widget.(*gui.MenuBar).SetMode(v.mode)
+	s.updateMenu(ctx)
+}
+func (v *MenuBarView) Unmount(ctx BuildContext, widget gui.Widget) { clearMenuState(ctx) }
+func (v *MenuBarView) Reparented(ctx BuildContext)                 { reparentMenuState(ctx) }
+
+var _ WidgetView = (*MenuBarView)(nil)
 
 var _ WidgetView = (*MenuButtonView)(nil)
 
@@ -279,13 +353,15 @@ func makeMenuLevel(items []*MenuItemView) *gui.Menu {
 			continue
 		}
 		if it.separator {
-			m.AppendSeparator()
+			entry := m.AppendSeparator()
+			entry.SetVisible(!it.hidden)
 			continue
 		}
 		if it.definition != nil {
-			panic("ui: MenuItem.DefineCommand requires a mounted MenuButton; temporary menus must reference a command")
+			panic("ui: MenuItem.DefineCommand requires a mounted menu presenter; temporary menus must reference a command")
 		}
 		mi := m.Append(it.label, it.action)
+		mi.SetVisible(!it.hidden)
 		if it.branch {
 			mi.SetSubmenu(makeMenuLevel(it.submenu))
 		} else if it.commandRef != nil {
@@ -302,11 +378,10 @@ func makeMenuLevel(items []*MenuItemView) *gui.Menu {
 	return m
 }
 
-// signatureOf fingerprints the entries (labels, enabled flags, separators) for
-// change detection. It intentionally ignores actions.
+// signatureOf identifies structure and operation kinds. Presentation and latest
+// action closures update in place without replacing model or item identities.
 func signatureOf(items []*MenuItemView) string {
-	// A simple composite: length-delimited labels plus enabled/separator markers.
-	// Strings are stored in the descriptor, so reconstructing per call is fine.
+	// Command IDs are length-delimited; branch and separator markers preserve shape.
 	walkMenuItems(items, func(*MenuItemView) {})
 	var b []byte
 	var visit func([]*MenuItemView)
@@ -327,13 +402,6 @@ func signatureOf(items []*MenuItemView) string {
 				b = append(b, 'r')
 			} else {
 				b = append(b, 'a')
-			}
-			b = strAppendUint(b, uint64(len(it.label)))
-			b = append(b, it.label...)
-			if it.enabled {
-				b = append(b, '1')
-			} else {
-				b = append(b, '0')
 			}
 			if it.branch {
 				b = append(b, '{')
@@ -362,8 +430,9 @@ func strAppendUint(b []byte, v uint64) []byte {
 	return append(b, tmp[i:]...)
 }
 
-func (*MenuButtonView) Reparented(ctx BuildContext) {
-	if s, ok := ctx.State().(*menuButtonState); ok {
+func (*MenuButtonView) Reparented(ctx BuildContext) { reparentMenuState(ctx) }
+func reparentMenuState(ctx BuildContext) {
+	if s, ok := ctx.State().(*menuState); ok {
 		s.definitions.reparented()
 		references := s.commands
 		for i := range references {
