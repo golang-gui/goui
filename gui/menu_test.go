@@ -2059,6 +2059,134 @@ func TestMenuSubmenuBodyOverlap(t *testing.T) {
 	}
 }
 
+func TestMenuSubmenuShadowCrossingKeepsLogicalHover(t *testing.T) {
+	for _, left := range []bool{false, true} {
+		t.Run(fmt.Sprint(left), func(t *testing.T) {
+			_, _, makePopup := transientFixture(t)
+			active, expanded := color.NRGBA{R: 80, A: 255}, color.NRGBA{B: 80, A: 255}
+			App.(*application).style = style.Sheet(
+				style.Name(styleNameMenu).Radius(8).Shadow(style.Shadow{Color: color.Black, BlurRadius: 16}),
+				style.Name(styleNameMenuItem).State(style.Hovered).BackgroundColor(active),
+				style.Name(styleNameMenuItem).Part("expanded").BackgroundColor(expanded),
+			)
+			pm := NewPopoverMenu(makePopup(nil).anchor)
+			t.Cleanup(pm.Destroy)
+			child := NewMenu()
+			leaf := child.Append("Leaf", nil)
+			model := NewMenu()
+			branch := model.AppendSubmenu("Branch", child)
+			other := model.Append("Other", nil)
+			pm.SetMenu(model)
+			position := geometry.Point{X: 100, Y: 100}
+			if left {
+				position.X = 850
+			}
+			if err := pm.ShowAt(position); err != nil {
+				t.Fatal(err)
+			}
+			pm.activate(branch)
+			parent, descendant := pm.nativeHost(), pm.child.nativeHost()
+			body := descendant.bodyRect()
+			body.X += descendant.requestedPosition.X
+			body.Y += descendant.requestedPosition.Y
+			point := pm.rowFor(branch).windowRect().Center()
+			point.Y += parent.requestedPosition.Y
+			point.X = body.X - 6
+			if left {
+				point.X = body.X + body.Width + 6
+			}
+			if pm.layerAt(point) != pm || !containsPoint(geometry.Rect(descendant.requestedPosition.X, descendant.requestedPosition.Y, descendant.width, descendant.height), point) {
+				t.Fatal("测试位置必须在子层原生表面内、主体外，且命中父行")
+			}
+			dispatch := func(menu *PopoverMenu, kind events.EventType, position geometry.Point) {
+				t.Helper()
+				host := menu.nativeHost()
+				local := geometry.Point{X: position.X - host.requestedPosition.X, Y: position.Y - host.requestedPosition.Y}
+				if err := menu.popover.DispatchEvent(events.PointerEvent{EventType: kind, Position: local}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			checkParent := func() {
+				t.Helper()
+				row := pm.rowFor(branch)
+				background, _ := row.resolvedStyle().BackgroundColor()
+				if !row.Snapshot().Selected || !row.Snapshot().Hovered || background != active || !pm.child.Visible() || pm.expanded != branch {
+					t.Fatal("子层阴影或迟到的父层 Leave 将 Hover 切换为展开色", row.Snapshot(), background)
+				}
+			}
+			dispatch(pm, events.PointerMove, point)
+			checkParent()
+			// 原生接收者已进入子层，但逻辑命中仍是阴影下的父行。
+			dispatch(pm.child, events.PointerEnter, point)
+			checkParent()
+			for range 3 {
+				dispatch(pm, events.PointerLeave, point) // 原生表面切换中可能晚到。
+				checkParent()
+				dispatch(pm.child, events.PointerMove, point)
+				checkParent()
+			}
+			otherPoint := pm.rowFor(other).windowRect().Center()
+			otherPoint.X, otherPoint.Y = point.X, otherPoint.Y+parent.requestedPosition.Y
+			if pm.layerAt(otherPoint) != pm || !containsPoint(geometry.Rect(descendant.requestedPosition.X, descendant.requestedPosition.Y, descendant.width, descendant.height), otherPoint) {
+				t.Fatal("另一父行也必须位于子层原生阴影区域")
+			}
+			// 父菜单已 ContainsHover；新的原生 Enter 仍必须更新实际命中的行。
+			dispatch(pm.child, events.PointerEnter, otherPoint)
+			if pm.content.active != other || pm.rowFor(branch).Snapshot().Selected {
+				t.Fatal("阴影中的 Enter 未更新已经处于悬停路径内的父菜单")
+			}
+			dispatch(pm.child, events.PointerMove, point)
+			checkParent()
+			leafPoint := pm.child.rowFor(leaf).windowRect().Center()
+			leafPoint.X += descendant.requestedPosition.X
+			leafPoint.Y += descendant.requestedPosition.Y
+			dispatch(pm.child, events.PointerMove, leafPoint)
+			row := pm.rowFor(branch)
+			background, _ := row.resolvedStyle().BackgroundColor()
+			if row.Snapshot().Selected || row.Snapshot().Hovered || background != expanded || !pm.child.rowFor(leaf).Snapshot().Selected {
+				t.Fatal("真正进入子层后没有只保留父层展开提示")
+			}
+			dispatch(pm, events.PointerLeave, point)
+			if !pm.child.rowFor(leaf).Snapshot().Selected {
+				t.Fatal("父层的旧 Leave 清除了子层当前项")
+			}
+			dispatch(pm.child, events.PointerLeave, leafPoint)
+			if pm.child.rowFor(leaf).Snapshot().Selected || !pm.child.Visible() {
+				t.Fatal("真正离开当前原生表面没有清除活动项或意外关闭分支")
+			}
+		})
+	}
+}
+
+func TestMenuSubmenuHoverHandoffPreservesReentrantBranch(t *testing.T) {
+	_, _, makePopup := transientFixture(t)
+	pm := NewPopoverMenu(makePopup(nil).anchor)
+	t.Cleanup(pm.Destroy)
+	child := NewMenu()
+	leaf := child.Append("Leaf", nil)
+	model := NewMenu()
+	first := model.AppendSubmenu("First", child)
+	second := model.AppendSubmenu("Second", child)
+	pm.SetMenu(model)
+	if err := pm.ShowAt(geometry.Point{}); err != nil {
+		t.Fatal(err)
+	}
+	pm.activate(first)
+	motion := NewMotionEventController()
+	pm.content.AddEventController(motion)
+	_ = pm.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: pm.rowFor(first).windowRect().Center()})
+	motion.ConnectContainsHover(func(hovered bool) {
+		if !hovered {
+			pm.openChild(second, true)
+		}
+	})
+	point := pm.child.rowFor(leaf).windowRect().Center()
+	_ = pm.child.popover.DispatchEvent(events.PointerEvent{EventType: events.PointerMove, Position: point})
+	if !pm.child.Visible() || pm.expanded != second || pm.child.content.active != leaf || !pm.keyboardChild {
+		t.Fatal("旧层的悬停交接清除了 crossing 回调中重新展开的分支")
+	}
+}
+
 // 契约调整：延迟只改变展开路径，不能延迟当前项与语义反馈。
 func TestMenuSubmenuDelaysBranchChangeWithImmediateSelection(t *testing.T) {
 	for _, target := range []string{"leaf", "disabled", "padding", "branch", "empty"} {

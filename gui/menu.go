@@ -193,6 +193,7 @@ type PopoverMenu struct {
 	pending       *MenuItem
 	pointer       geometry.Point
 	pointerValid  bool
+	pointerSource *PopoverMenu // root only: latest native receiver, before shadow routing
 	protectUntil  time.Time
 	modelHandles  signal.Handles
 
@@ -538,12 +539,10 @@ func (c *menuPointerController) HandleCrossing(ctx CrossingContext) {
 		}
 	} else if position, ok := ctx.Position(); ok {
 		// Native Enter delivers crossing without an ordinary pointer move.
-		c.content.selectPointer(position)
 		if pm := c.content.presenter; pm != nil {
-			pm.cancelAncestorHover()
-			if host := pm.nativeHost(); host != nil && !host.showing {
-				pm.pointerMotion(position, true)
-			}
+			pm.pointerEnter(position)
+		} else {
+			c.content.selectPointer(position)
 		}
 	}
 }
