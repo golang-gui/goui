@@ -662,7 +662,8 @@ InkBounds、文本布局图片或 Widget 回调接口。Linux arm64 全仓的既
 - 唯一模态根或 MenuButton 显式转发，子层经过普通分发／控制器处理。支持逐级 Esc、
   逻辑左右键、悬停延迟、有限斜移保护、侧向退避和整链关闭后执行一次。
 - Basic／Modern 提供矢量箭头及 expanded 反馈，语义包含 HasSubmenu／Expanded。
-  父子主体重叠 4 DIP；首次展开延迟与移出立即关闭分开，保留仅向子层斜移的有限保护。
+  父子主体重叠 4 DIP；活动项即时反馈、展开项使用独立弱提示，分支变化宽限 250 ms，
+  向子层斜移最多保护 500 ms；离开整链保留展开路径，明确操作结束菜单。
   设计见 [DesignMenuSubmenu](DesignMenuSubmenu.md)，实际验证和平台缺口见 Plan。
 
 <a id="future-menu-bar"></a>

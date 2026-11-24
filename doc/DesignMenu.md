@@ -131,15 +131,17 @@ Snapshot 是该活动项的投影。Selected 到 Hovered 的外观映射保留�
 隐藏、卸载、输入重置和模型替换清空活动项；虚拟行解绑只清理其投影，重新 Bind
 从所属 menuContent 读取活动项，不将呈现资源复用解释为新的指针操作。
 级联菜单另有 expanded 父项背景和有限移动保护，活动项不承担分支资源所有权；
-离开当前表面清空活动项，进入子层时由展开路径保留父项提示；移到其他目标立即关闭
-旧子层，仅向子层斜移时有有限保护。子层通过根授权和正常分发路径接收键盘，
+活动项即时跟随命中，展开项使用较弱的 expanded Part，不伪造 Hovered。
+移到其他项目或本层留白，宽限 250 ms 后关闭或替换旧子层，向子层斜移最多保护 500 ms；
+离开菜单链清空活动项与任务并保留展开路径，等待明确关闭操作。
+子层通过根授权和正常分发路径接收键盘，
 不夺取主窗口原生焦点，也不添加对外导航／执行测试接口。
 
 验证见 [菜单键盘验收](PlanMenuKeyboard.md)。
 
-此处采用单一活动项，与 [Qt 6.8.3 QMenuPrivate::setCurrentAction](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/widgets/qmenu.cpp#L657)
+此处采用单一活动项，与 [Qt 6.8.3 QMenuPrivate::setCurrentAction](https://github.com/qt/qtbase/blob/v6.8.3/src/widgets/widgets/qmenu.cpp#L706)
 集中替换 currentAction 并更新新旧行的源码行为一致；其键盘与鼠标路径均调用该入口。
-仅采用状态归属，不引入 Qt 的子菜单延迟、焦点或对象体系。该参考核对于 2026-10-16，
+此处参考状态归属，不引入 Qt 的焦点或对象体系。该参考核对于 2026-10-16，
 是源码行为依据，不表示 GOUI 已通过 Qt 所支持的所有原生平台场景。
 
 离开语义另于2026-11-06核对：
@@ -147,7 +149,7 @@ Snapshot 是该活动项的投影。Selected 到 Hovered 的外观映射保留�
 在 contains-pointer 退出时清空所属 PopoverMenu 的活动项；
 [Qt 6.8 QMenu.leaveEvent](https://github.com/qt/qtbase/blob/v6.8.0/src/widgets/widgets/qmenu.cpp#L3270)
 在没有活动子菜单时清空当前操作。GOUI 采用菜单层拥有活动项及完整退出规则，
-不照搬 GTK 焦点体系或 Qt 子菜单延时；这些是固定版本源码行为，原生运行结果另记 Plan。
+不照搬 GTK 焦点体系；子菜单时序另见当前级联设计。这些是固定版本源码行为，原生运行结果另记 Plan。
 
 ## 共享命令与快捷键列（2026-11-04）
 
