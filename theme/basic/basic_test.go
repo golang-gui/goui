@@ -172,6 +172,21 @@ func TestTabKeyboardFocusParts(t *testing.T) {
 	}
 }
 
+func TestMenuItemExpandedAppearance(t *testing.T) {
+	sheet := Sheet()
+	expanded, _ := sheet.Resolve(style.Sel{Name: "menu-item", Part: "expanded"}).BackgroundColor()
+	hovered, _ := sheet.Resolve(style.Sel{Name: "menu-item", State: style.Hovered}).BackgroundColor()
+	if !colors.Equal(expanded, color.RGBA{R: 238, G: 242, B: 246, A: 255}) || colors.Equal(expanded, hovered) {
+		t.Fatal("展开路径没有使用独立的较浅背景", expanded, hovered)
+	}
+	custom := style.Sheet(append(Rules(), style.Name("menu-item").Part("expanded").BackgroundColor(color.Black))...)
+	background, _ := custom.Resolve(style.Sel{Name: "menu-item", Part: "expanded"}).BackgroundColor()
+	active, _ := custom.Resolve(style.Sel{Name: "menu-item", State: style.Hovered}).BackgroundColor()
+	if !colors.Equal(background, color.Black) || !colors.Equal(active, hovered) {
+		t.Fatal("应用不能单独覆盖展开路径，或覆盖污染了主要高亮")
+	}
+}
+
 func TestMenuButtonExpandedAppearance(t *testing.T) {
 	sheet := Sheet()
 	for _, tc := range []struct {

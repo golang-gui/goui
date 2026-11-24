@@ -16,6 +16,35 @@ func resolved(sheet style.StyleSheet, name string, state style.State) style.Styl
 	return sheet.Resolve(style.Sel{Name: name, State: state})
 }
 
+func TestMenuItemExpandedAppearance(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		for _, accent := range []color.Color{nil, color.Black, rgb(0xFF0000)} {
+			options := Options{Dark: dark, AccentColor: accent}
+			sheet := Sheet(options)
+			expanded := sheet.Resolve(style.Sel{Name: "menu-item", Part: "expanded"})
+			background, _ := expanded.BackgroundColor()
+			radius, _ := expanded.CornerRadius()
+			want := rgb(0xF3F3F3)
+			if dark {
+				want = rgb(0x333338)
+			}
+			if rgba(background) != want || radius != geometry.UniformCornerRadius(4) {
+				t.Fatalf("展开路径背景或圆角错误：dark=%v background=%v radius=%v", dark, background, radius)
+			}
+			p := colorsFor(dark)
+			if !(contrast(rgba(background), p.surface) > 1 && contrast(rgba(background), p.surface) < contrast(p.menuHover, p.surface)) {
+				t.Fatal("展开提示应可辨且弱于主要高亮")
+			}
+			custom := style.Sheet(append(Rules(options), style.Name("menu-item").Part("expanded").BackgroundColor(rgb(0x123456)))...)
+			background, _ = custom.Resolve(style.Sel{Name: "menu-item", Part: "expanded"}).BackgroundColor()
+			active, _ := custom.Resolve(style.Sel{Name: "menu-item", State: style.Hovered}).BackgroundColor()
+			if rgba(background) != rgb(0x123456) || rgba(active) != p.menuHover {
+				t.Fatal("展开 Part 覆盖影响了活动项背景")
+			}
+		}
+	}
+}
+
 func TestMenuButtonExpandedAppearance(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		sheet := Sheet(Options{Dark: dark})
