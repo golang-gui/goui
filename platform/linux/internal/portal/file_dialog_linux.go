@@ -363,7 +363,9 @@ func response(action Action, multiple bool, body []any) ([]string, error) {
 	if err := dbus.Store(body, &code, &results); err != nil {
 		return nil, fmt.Errorf("invalid portal response: %w", err)
 	}
-	if code == 1 {
+	// Both responses end without a selection. Older GTK portals use 2 for
+	// Escape or window close; it does not identify a transport failure.
+	if code == 1 || code == 2 {
 		return nil, nil
 	}
 	if code != 0 {

@@ -82,17 +82,47 @@ func TestFileDialogResponse(t *testing.T) {
 			}
 		})
 	}
-	for _, code := range []uint32{0, 1, 2, 99} {
-		paths, err := response(OpenFile, false, []any{code, map[string]dbus.Variant{}})
-		if paths != nil || (err == nil) != (code == 1) {
-			t.Fatalf("取消与故障混淆: code=%d paths=%v err=%v", code, paths, err)
-		}
-	}
 	for _, action := range []Action{OpenFile, OpenDirectory, SaveFile} {
+		// 契约修正：response=2 只说明交互结束，旧 GTK 后端的 Esc 也走此路径。
+		for _, test := range []struct {
+			name string
+			code uint32
+			err  bool
+		}{
+			{"成功缺少结果", 0, true},
+			{"用户取消", 1, false},
+			{"其他方式结束", 2, false},
+			{"未知响应", 99, true},
+		} {
+			t.Run(fmt.Sprintf("%d/%s", action, test.name), func(t *testing.T) {
+				paths, err := response(action, false, []any{test.code, map[string]dbus.Variant{}})
+				if paths != nil || (err != nil) != test.err {
+					t.Fatalf("结束状态与故障混淆: code=%d paths=%v err=%v", test.code, paths, err)
+				}
+				if test.code != 0 {
+					paths, err = response(action, true, []any{test.code, map[string]dbus.Variant{
+						"uris": dbus.MakeVariant([]string{"file:///tmp/unconfirmed"}),
+					}})
+					if paths != nil || (err != nil) != test.err {
+						t.Fatalf("未确认选择的响应交付了文件或改写了结束状态: %v %v", paths, err)
+					}
+				}
+			})
+		}
 		if _, err := response(action, action != OpenFile, []any{uint32(0), map[string]dbus.Variant{
 			"uris": dbus.MakeVariant([]string{"file:///a", "file:///b"}),
 		}}); err == nil {
 			t.Fatal("单选操作接受了多个结果")
+		}
+	}
+	for _, body := range [][]any{
+		nil,
+		{uint32(2)},
+		{"2", map[string]dbus.Variant{}},
+		{uint32(2), "invalid results"},
+	} {
+		if _, err := response(SaveFile, false, body); err == nil {
+			t.Fatalf("损坏的协议响应被当作正常结束: %v", body)
 		}
 	}
 }
@@ -285,17 +315,52 @@ func TestFileDialogUnavailableAndErrors(t *testing.T) {
 	if _, err := f.Open(context.Background(), OpenDirectory, "", common.DialogOptions{}); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("目录能力缺失应允许降级: %v", err)
 	}
-	for _, code := range []uint32{1, 2} {
-		t.Run(string(rune('0'+code)), func(t *testing.T) {
-			f, s := testService(t, 3, func(s *testChooser) { s.body = []any{code, map[string]dbus.Variant{}} })
-			paths, err := f.Open(context.Background(), OpenFile, "", common.DialogOptions{})
-			if paths != nil || (err == nil) != (code == 1) || errors.Is(err, ErrUnsupported) {
-				t.Fatalf("取消／拒绝不应降级: %v %v", paths, err)
-			}
-			if testReceive(t, s.calls).options["modal"].Value() != false {
-				t.Fatal("无 owner 请求必须显式关闭模态")
-			}
-		})
+	for _, action := range []Action{OpenFile, OpenDirectory, SaveFile} {
+		for _, test := range []struct {
+			code uint32
+			err  bool
+		}{{1, false}, {2, false}, {99, true}} {
+			t.Run(fmt.Sprintf("%d/%d", action, test.code), func(t *testing.T) {
+				f, s := testService(t, 3, nil)
+				type result struct {
+					paths []string
+					err   error
+				}
+				done := make(chan result, 1)
+				open := func() {
+					go func() {
+						paths, err := f.Open(context.Background(), action, "", common.DialogOptions{})
+						done <- result{paths, err}
+					}()
+				}
+				open()
+				call := testReceive(t, s.calls)
+				if err := s.conn.Emit(call.path, request+".Response", test.code, map[string]dbus.Variant{}); err != nil {
+					t.Fatal(err)
+				}
+				got := testReceive(t, done)
+				if got.paths != nil || (got.err != nil) != test.err || errors.Is(got.err, ErrUnsupported) {
+					t.Fatalf("正常结束／未知响应不应降级: %v %v", got.paths, got.err)
+				}
+				if call.options["modal"].Value() != false {
+					t.Fatal("无 owner 请求必须显式关闭模态")
+				}
+				open()
+				reopened := testReceive(t, s.calls)
+				if reopened.path == call.path {
+					t.Fatal("重新打开复用了已经结束的请求")
+				}
+				if err := s.conn.Emit(reopened.path, request+".Response", uint32(0), map[string]dbus.Variant{
+					"uris": dbus.MakeVariant([]string{"file:///tmp/reopened"}),
+				}); err != nil {
+					t.Fatal(err)
+				}
+				got = testReceive(t, done)
+				if got.err != nil || !reflect.DeepEqual(got.paths, []string{"/tmp/reopened"}) {
+					t.Fatalf("结束后无法重新选择: %v %v", got.paths, got.err)
+				}
+			})
+		}
 	}
 }
 
