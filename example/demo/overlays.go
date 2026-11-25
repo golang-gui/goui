@@ -24,6 +24,8 @@ type overlaysDemo struct {
 	toast          wui.ToastHandle
 	commandEnabled ui.State[bool]
 	commandCount   ui.State[int]
+	commandChecked ui.State[bool]
+	inWindowMenu   ui.State[bool]
 }
 
 func (d *overlaysDemo) View() ui.View { return ui.Build(d.view) }
@@ -34,8 +36,14 @@ func (d *overlaysDemo) view() ui.View {
 		long[i] = ui.MenuItem(fmt.Sprintf(resource.LongMenuItem(), i+1), func() { d.host.report(fmt.Sprintf(resource.MenuSelected(), i+1)) })
 	}
 	base := page("overlay-content", resource.Overlays(), resource.OverlaysHint(),
+		section("MenuBar",
+			ui.Build(d.menuBar),
+			ui.Build(func() ui.View {
+				return wui.Switch(resource.InWindowMenuBar()).ID("menu-bar-in-window").Checked(d.inWindowMenu.Get()).OnChange(d.inWindowMenu.Set)
+			}),
+			ui.Label(resource.MenuBarHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText)),
 		section("PopoverMenu",
-			ui.HWrap(ui.MenuButton(resource.ActionsMenu()).ID("command-menu").Menu(ui.MenuItem(resource.Execute()).Command("demo.execute"), ui.MenuItem(resource.DisabledMenuItem(), nil).Enabled(false), ui.MenuSeparator(), ui.MenuItem(resource.ShowToast(), func() { d.showToast(resource.MenuToast()) })),
+			ui.HWrap(ui.MenuButton(resource.ActionsMenu()).ID("command-menu").Menu(ui.MenuItem(resource.Execute()).Command("demo.execute"), d.moreActions(), ui.MenuItem(resource.DisabledMenuItem(), nil).Enabled(false), ui.MenuSeparator(), ui.MenuItem(resource.ShowToast(), func() { d.showToast(resource.MenuToast()) })),
 				ui.MenuButton(resource.LongMenu()).Menu(long...),
 				ui.Button(resource.Popover()).ID("popover-anchor").OnClick(d.openPopover)).Spacing(12).LineSpacing(8),
 			ui.Build(func() ui.View {
@@ -43,6 +51,9 @@ func (d *overlaysDemo) view() ui.View {
 			}),
 			ui.Build(func() ui.View {
 				return ui.Label(fmt.Sprintf(resource.CommandCount(), d.commandCount.Get())).ID("command-count")
+			}),
+			ui.Build(func() ui.View {
+				return wui.Switch(resource.CheckedCommand()).ID("command-checked").Checked(d.commandChecked.Get()).OnChange(d.commandChecked.Set)
 			}),
 			ui.Label(resource.CommandHint()).WrapMode(gui.WrapWordChar).Style(modern.MutedText)),
 		section("Overlay",
@@ -139,6 +150,36 @@ func (d *overlaysDemo) showToast(text string) {
 // The main window owns this command; menus and shortcuts only reference it.
 func (d *overlaysDemo) command() *ui.CommandView {
 	return ui.Command("demo.execute").BindEnabled(&d.commandEnabled).OnActivate(d.executeCommand)
+}
+
+func (d *overlaysDemo) checkedCommand() *ui.CommandView {
+	return ui.Command("demo.checked").Checkable(true).BindChecked(&d.commandChecked).
+		BindEnabled(&d.commandEnabled).OnActivate(func() {
+		d.commandChecked.Set(!d.commandChecked.Get())
+		d.host.report(resource.CheckedCommand())
+	})
+}
+
+func (d *overlaysDemo) moreActions() *ui.MenuItemView {
+	return ui.MenuItem(resource.MoreActions()).Submenu(
+		ui.MenuItem(resource.CheckedCommand()).Command("demo.checked"),
+		ui.MenuItem(resource.ViewMenu()).Submenu(
+			ui.MenuItem(resource.Execute()).Command("demo.execute"),
+			ui.MenuItem(resource.ShowToast(), func() { d.showToast(resource.MenuToast()) })),
+	)
+}
+
+func (d *overlaysDemo) menuBar() ui.View {
+	mode := gui.MenuBarAuto
+	if d.inWindowMenu.Get() {
+		mode = gui.MenuBarInWindow
+	}
+	return ui.MenuBar(
+		ui.MenuItem(resource.FileMenu()).Submenu(ui.MenuItem(resource.Execute()).Command("demo.execute"), d.moreActions()),
+		ui.MenuItem(resource.ViewMenu()).Submenu(
+			ui.MenuItem(resource.CheckedCommand()).Command("demo.checked"),
+			ui.MenuItem(resource.ShowToast(), func() { d.showToast(resource.MenuToast()) })),
+	).ID("demo-menu-bar").Mode(mode).OnError(func(err error) { d.host.result("MenuBar", err) })
 }
 
 func (d *overlaysDemo) executeCommand() {

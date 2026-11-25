@@ -115,7 +115,7 @@ func (d *demo) build(app ui.App) ui.RootView {
 		).Spacing(12).Padding(6).MinHeight(28),
 	).CrossAlign(layout.CrossStretch)
 	windows := []ui.WindowView{ui.Window("main").Title(resource.Title()).Chrome(ui.WindowChromeIntegrated).Size(1120, 800).MinSize(820, 600).Center(true).
-		Commands(d.overlays.command()).
+		Commands(d.overlays.command(), d.overlays.checkedCommand()).
 		Shortcuts(ui.Shortcut(ui.KeyF5).OnActivate(func() { app.RequestUpdate(); d.report(resource.Refreshed()) }),
 			ui.Shortcut(ui.KeyF6).Command("demo.execute"),
 			ui.Shortcut(ui.KeyF7).OnActivate(d.overlays.toggleCommand)).

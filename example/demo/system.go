@@ -124,7 +124,7 @@ func (d *systemDemo) view() ui.View {
 				}
 			})).Spacing(12)),
 		section(resource.DialogsTitle(), ui.HWrap(ui.Button(resource.ChooseFile()).ID("choose-files").OnClick(func() {
-			if err := d.host.app.FileDialog().OpenFile("main", ui.DialogOptions{Title: resource.ChooseDragFiles(), AllowMultiple: true}, d.selectedPaths); err != nil {
+			if err := d.host.app.FileDialog().OpenFile("main", ui.DialogOptions{Title: resource.ChooseDragFiles(), AllowMultiple: true, Filters: demoFileFilters()}, d.selectedPaths); err != nil {
 				d.host.result(resource.ChooseFile(), err)
 			}
 		}),
@@ -134,7 +134,7 @@ func (d *systemDemo) view() ui.View {
 				}
 			}),
 			ui.Button(resource.SaveDialog()).OnClick(func() {
-				if err := d.host.app.FileDialog().SaveFile("main", ui.DialogOptions{Title: resource.SaveDialogTitle(), DefaultName: "demo.txt"}, func(access []ui.FileAccess, err error) {
+				if err := d.host.app.FileDialog().SaveFile("main", ui.DialogOptions{Title: resource.SaveDialogTitle(), DefaultName: "demo.txt", Filters: demoFileFilters()}, func(access []ui.FileAccess, err error) {
 					if err != nil {
 						d.host.result(resource.SaveDialogTitle(), err)
 						return
@@ -180,6 +180,13 @@ func (d *systemDemo) view() ui.View {
 			ui.Label(resource.DragHint())),
 	)
 }
+func demoFileFilters() []ui.FileFilter {
+	return []ui.FileFilter{
+		{Name: resource.TextFilesFilter(), Extensions: []string{"txt", "md"}},
+		{Name: resource.AllFilesFilter()},
+	}
+}
+
 func (d *systemDemo) selectedPaths(access []ui.FileAccess, err error) {
 	if err != nil {
 		d.host.result(resource.DialogsTitle(), err)

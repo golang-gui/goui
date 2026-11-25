@@ -36,6 +36,13 @@ func (d *layoutDemo) view() ui.View {
 		section(resource.ScrollBarTitle(), ui.Build(func() ui.View {
 			return ui.VBox(scrollBar(d.scrollValue.Get(), d.scrollValue.Set).ID("layout-scrollbar"), ui.Label(fmt.Sprintf(resource.ScrollPosition(), d.scrollValue.Get())).ID("scroll-value")).Spacing(12).CrossAlign(layout.CrossStretch)
 		})),
+		section(resource.ExternalScrollBar(),
+			ui.Label(resource.ExternalScrollHint()).WrapMode(ui.WrapWordChar).Style(modern.MutedText),
+			ui.HBox(
+				ui.ScrollView(ui.VBox(chipsCopy(30)...).Spacing(10).Padding(12)).ID("external-scroll-target").
+					Direction(ui.ScrollVertical).VScrollBarOptions(ui.ScrollBarOptions{Policy: ui.ScrollBarHidden}).MainWeight(1),
+				ui.ScrollBar(layout.DirectionVertical, "external-scroll-target").ID("external-scrollbar").Thickness(14).ThumbThickness(8),
+			).Spacing(8).CrossAlign(layout.CrossStretch).MinHeight(150).MaxHeight(150)),
 		section("HBox / VBox / Baseline",
 			ui.HBox(ui.Label(resource.Username()), ui.TextInput().BindText(&d.username).MainWeight(1), ui.Button(resource.OK())).CrossAlign(layout.CrossBaseline).Spacing(12),
 			ui.HBox(ui.HBox(ui.Label(resource.WeightOne())).Padding(12).Style(modern.Card).MainWeight(1), ui.HBox(ui.Label(resource.WeightTwo())).Padding(12).Style(modern.Card).MainWeight(2)).Spacing(12)),
