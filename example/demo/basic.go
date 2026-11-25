@@ -123,7 +123,7 @@ func (d *basicDemo) view() ui.View {
 					Suffix(ui.Icon(d.host.rowArrow).Size(16).Style(modern.MutedText)).Activatable(true).OnActivate(func() { d.host.report(resource.ListRowActivated()) }),
 				wui.ListRow(resource.DropDownTitle()).ID("settings-dropdown").Suffix(
 					wui.DropDown(d.choices).Selected(d.drop.Get()).MaxWidth(200).OnSelected(func(i int) { d.drop.Set(i) }).OnOpenError(func(err error) { d.host.result(resource.OpenDropDown(), err) })),
-				wui.ListRow(resource.VersionTitle()).ID("settings-version").Suffix(ui.Label("0.8.1")),
+				wui.ListRow(resource.VersionTitle()).ID("settings-version").Suffix(ui.Label("0.8.2")),
 			).ID("settings-rows").UniformRows(d.uniformRows.Get()),
 		).Spacing(12).CrossAlign(layout.CrossStretch),
 	)

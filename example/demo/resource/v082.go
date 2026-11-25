@@ -1,0 +1,12 @@
+package resource
+
+var (
+	TextFilesFilter    = text("Text files", "文本文件", "テキストファイル", "텍스트 파일", "Textdateien", "Fichiers texte", "Текстовые файлы", "ملفات نصية")
+	AllFilesFilter     = text("All files", "所有文件", "すべてのファイル", "모든 파일", "Alle Dateien", "Tous les fichiers", "Все файлы", "جميع الملفات")
+	InWindowMenuBar    = text("Always show menus in this window", "始终在窗口内显示菜单", "常にウィンドウ内にメニューを表示", "항상 창 안에 메뉴 표시", "Menüs immer im Fenster anzeigen", "Toujours afficher les menus dans la fenêtre", "Всегда показывать меню в окне", "إظهار القوائم داخل النافذة دائمًا")
+	MenuBarHint        = text("Auto uses the macOS system menu bar; other desktops show menus here. Menus are available while this page is open.", "自动模式使用 macOS 系统菜单栏，其他桌面在此显示；菜单随本页打开和关闭。", "自動モードは macOS のシステムメニューを使用し、他の環境ではここに表示。このページを開いている間だけ有効です。", "자동 모드는 macOS 시스템 메뉴 막대를 사용하고 다른 데스크톱에서는 여기에 표시합니다. 이 페이지가 열려 있을 때만 사용할 수 있습니다.", "Automatisch wird unter macOS die Systemmenüleiste genutzt, sonst diese Leiste. Die Menüs sind auf dieser Seite verfügbar.", "Le mode automatique utilise la barre système de macOS, sinon les menus apparaissent ici. Ils restent disponibles sur cette page.", "Автоматический режим использует системное меню macOS, на других системах — меню здесь. Оно доступно на этой странице.", "يستخدم الوضع التلقائي شريط قوائم macOS، وتظهر القوائم هنا على الأنظمة الأخرى. تتوفر أثناء فتح هذه الصفحة.")
+	CheckedCommand     = text("Checked command", "命令勾选", "コマンドのチェック状態", "명령 선택 상태", "Befehlsmarkierung", "État coché de la commande", "Отметка команды", "حالة تحديد الأمر")
+	MoreActions        = text("More actions", "更多操作", "その他の操作", "추가 작업", "Weitere Aktionen", "Autres actions", "Другие действия", "إجراءات أخرى")
+	ExternalScrollBar  = text("External scrollbar", "外部滚动条", "外部スクロールバー", "외부 스크롤바", "Externe Scrollleiste", "Barre de défilement externe", "Внешняя полоса прокрутки", "شريط تمرير خارجي")
+	ExternalScrollHint = text("The separate bar controls this viewport. Scroll with the wheel or drag the thumb; both keep the same position.", "独立布局的滚动条控制下方视口；滚轮和拖动滑块保持同一滚动位置。", "独立したバーで下の表示領域を操作。ホイールとつまみの位置は同期します。", "독립적으로 배치된 막대가 아래 영역을 제어합니다. 휠과 손잡이의 위치가 동기화됩니다.", "Die separat angeordnete Leiste steuert diesen Ausschnitt. Mausrad und Schieber bleiben synchron.", "La barre indépendante contrôle cette zone. La molette et le curseur gardent la même position.", "Отдельная полоса управляет этой областью. Колесо и ползунок сохраняют одну позицию.", "يتحكم الشريط المنفصل في هذه المنطقة. تبقى عجلة التمرير والمقبض متزامنين.")
+)
