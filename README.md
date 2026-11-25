@@ -28,10 +28,11 @@ in the [release policy](doc/Release.md#1-版本与发布范围).
 The [demo](example/demo) brings together controls, text editing, layouts, data views, detachable
 tabs, overlays, graphics, animations, and system integration. Switch between light/dark appearances, accent colors, and eight UI languages.
 
-The published demo is **0.8.1 / build 1**, a repair release covering
-popup reuse, fullscreen behavior, scrolling, split handles, keyboard focus and
-rendering quality. See the [v0.8.1 release notes](doc/ReleaseV081.md) for fixes
-and required API migration, and the [demo guide](example/demo/README.md) for examples.
+The source demo is being prepared as **0.8.2 / build 1**, with adaptive menu bars,
+cascading menus, checked commands and an external-scrollbar example. See the
+[v0.8.2 notes and migration guide](doc/ReleaseV082.md) and the
+[demo guide](example/demo/README.md). The downloads below remain the published
+**0.8.1 / build 1** until v0.8.2 is released.
 
 | Platform | Demo download |
 | --- | --- |
@@ -85,7 +86,7 @@ GOUI is a lightweight native GUI framework. Actual executable size and runtime m
 
 ### Executable size
 
-Built with Go 1.25.8, `CGO_ENABLED=0`, `-trimpath`, and `-ldflags="-s -w"`, with `-H=windowsgui` also set on Windows.
+Historical reference measurements, built with Go 1.25.8, `CGO_ENABLED=0`, `-trimpath`, and `-ldflags="-s -w"`, with `-H=windowsgui` also set on Windows. Current builds may differ.
 
 | Target | Minimal app | Demo |
 | --- | ---: | ---: |
@@ -102,7 +103,7 @@ The full demo includes its logo, SVG icons, eight-language resources, and nine f
 | Minimal app | 58.8 MiB | 28.6 MiB |
 | Demo | 78.5 MiB | 46.2 MiB |
 
-RSS includes resident shared-library pages; PSS apportions shared pages between processes. The figures are historical development measurements summed from Linux `/proc/<pid>/smaps`, not remeasured for v0.8.0; results on other platforms may differ.
+RSS includes resident shared-library pages; PSS apportions shared pages between processes. The figures are historical development measurements summed from Linux `/proc/<pid>/smaps`, not remeasured for v0.8.2; results on other platforms may differ.
 
 ## What you can build with today
 
@@ -124,14 +125,16 @@ RSS includes resident shared-library pages; PSS apportions shared pages between 
 Core controls live in `gui`, with declarative bindings in `ui`. Additional controls live in
 `widgets`, with their declarative bindings in `widgets/ui`.
 
-### v0.8.1 repair release
+### v0.8.2 changes
 
-- **Popup stability:** stabilize size and position before showing reused menus, dropdowns and tooltips; clear retained contents and handle anchor changes without giving clients ownership of the shared host.
-- **Desktop behavior:** repair fullscreen transitions and menu placement, provide visible keyboard focus for tabs, and refresh focused custom text widgets after their input capability changes.
-- **Scrolling and splits:** let explicit scrolling override an older reveal, configure scrollbar spacing and thickness while preserving default geometry, and align SplitView cursors with its grab area. Separator styling and grab thickness are independent.
-- **Rendering and settings:** preserve fractional-pixel edges, improve rotated ring coverage and Software image scaling, support formatted tooltips, and group settings rows with optional equal heights.
+- **Menus:** adaptive menu bars use the macOS system menu bar or an in-window presentation. Cascading submenus support pointer and keyboard navigation, with stable highlighting across popup shadows and one-time action execution after dismissal.
+- **Commands:** share availability and checked state across menus and shortcuts; activation handlers publish the actual checked state.
+- **Scrolling:** external scrollbars control ScrollView or TableView without belonging to their layout. Declarative Target bindings follow local widget replacement; TabBar uses the same persistent association.
+- **Windows and files:** `NoKeepRunning` windows do not prevent automatic application exit. File filters use explicit extensions with consistent ASCII case handling; Linux Portal dismissal returns an empty result.
+- **Rendering:** Direct2D uses native curves, while styled boxes share aligned outer contours across uniform, mixed-corner and selective-border rendering.
+- **macOS distribution:** Developer ID signing, Apple notarization, ticket stapling and ZIP creation support portable certificate and API-key files.
 
-The demo retains nine pages and adds controls for equal row heights, scrollbar layouts and fullscreen. Public API changes needed for these repairs are listed in the [migration notes](doc/ReleaseV081.md#api-migration).
+The demo retains nine pages and eight languages. Menu, scrolling and file-dialog examples are updated in their existing pages. See the [API migration notes](doc/ReleaseV082.md#api-migration) before upgrading from v0.8.1.
 
 ## Build with an AI coding assistant
 
