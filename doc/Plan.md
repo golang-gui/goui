@@ -1,5 +1,52 @@
 # Plan
 
+<a id="v082-preparation"></a>
+
+## v0.8.2 发布准备（2026-11-25）
+
+比较基线为 v0.8.1；同步更新 Demo 0.8.2 / build 1。准备分支为
+pre-release/v0.8.2，main 的正式候选 SHA 尚未冻结。当前下载保持 v0.8.1。
+
+- [x] 审阅比较基线以来的变更，更新 Demo 配置、设置行版本、八语言菜单栏／级联
+  菜单／命令勾选、外部滚动条及扩展名过滤示例。保留九页和现有截图。
+- [x] 更新双语 README、Demo 指南及 [ReleaseV082](ReleaseV082.md)，区分当前源码与
+  已发布下载；迁移按 v0.8.1 正式接口核对，包含 FileFilter.Extensions、平台过滤格式
+  与 CommandScope。不把分支中间接口列为发布迁移项。
+- [x] 查询 origin 标签及 GitHub Release，v0.8.2 尚不存在。未创建标签、Release 或附件。
+- [x] Demo 源码提交为 `9a149a5f4f2f5a7e48e521c242fa57bd54be953b`，从干净
+  git archive 独立验证，不纳入工作区未跟踪文件。Linux amd64／Go 1.25.8：
+  `go test -p 4 -json ./... -count=1` 共 6479 项测试／子测试通过，82 个有测试包、
+  159 个无测试包单列，零失败、零条件跳过；既有 X11 测试创建私有窗口与 selection。
+  Demo／资源包的非缓存测试、race、vet 和 `go mod verify` 通过；Go 1.24.13 下
+  no-cgo 的 Demo 与 CLI 构建通过。
+- [x] 三目标 `go build ./...` 仍因 `tests/window/platform/mobile_start`、
+  `mobile_surface` 缺桌面 main 失败：`function main is undeclared in the main package`。
+  两个入口在干净 v0.8.1 基线复现，沿用该版已记录的桌面构建例外；仅排除这两个
+  移动入口及无生产源码的目录后，Linux amd64／Windows amd64／macOS arm64 的
+  237／227／226 个桌面包构建通过，不修改源码或弱化测试。
+- [x] 使用同一干净源码构建的 CLI，三目标 doctor、Demo 构建与未签名 .app 打包通过；
+  Go 1.25.8／CGO_ENABLED=0／trimpath／-s -w。核对 ELF amd64、PE amd64 GUI、
+  Mach-O arm64；Windows 图标、清单及文件／产品版本 0.8.2.1，macOS plist 0.8.2／1、
+  图标及包内可执行文件对应检查通过。均为准备预览，不作为正式发布附件。
+- [x] 独立 Linux X11／xfwm4（关闭合成）／OpenGL／1×／Modern 亮暗色：窗口内
+  MenuBar、三级菜单的鼠标／键盘操作、共享命令的执行／勾选／禁用、模式切换、
+  外部条拖动与滚轮同步、F5／主题重建后关联，以及文件过滤、保存取消后重新选择通过。
+  大写 TXT 文件返回完整路径；中文／英文切换与正常退出通过。未通过 DevServer 验收。
+  原生选择器可能记录最近目录；保存只选择目标，没有写入文件。本轮测试窗口、
+  独立桌面和配套进程已清理，日志与预览产物保留于仓库外。
+
+准备过程中曾因临时目录空间不足导致构建／测试失败，改用独立磁盘目录后完成；
+窗口检查的缩放覆盖值曾误带入测试，使一个移动端缩放断言失败，清除环境覆盖后
+重跑专项及全仓通过，断言未改。原始失败与重跑日志、构建来源和截图保留于仓库外。
+
+- [ ] 合入 main 后冻结候选，重新构建三平台正式附件；完成实际版本字段、窗口操作、
+  macOS 正式签名／公证／最终 ZIP、BUILD-INFO 与 SHA256SUMS 的对应检查。
+  本轮未执行 Windows／macOS 的准备预览原生操作，也未验证正式附件，不以交叉构建替代。
+- [ ] 正式标签、Draft 下载核对、发布与公开下载／Go 模块消费验证完成后更新下载入口。
+
+0.8.x 为当前维护系列，重点维护最新迭代；现有平台范围保持 Windows amd64、
+Linux amd64/X11 与 macOS arm64。其他窗口系统、架构和移动端不随本次准备扩展承诺。
+
 ## Portal 文件选择器结束响应（2026-11-25）
 
 - [x] FileChooser 的 response=1／2 都按未确认选择结束处理，返回空结果／nil；
