@@ -2,13 +2,17 @@ package gui
 
 import (
 	"fmt"
+	"image"
 	"image/color"
 	"strings"
 	"testing"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/golang-gui/goui/core/colors"
 	"github.com/golang-gui/goui/core/geometry"
+	"github.com/golang-gui/goui/core/signal"
 	"github.com/golang-gui/goui/gui/textedit"
 	"github.com/golang-gui/goui/layout"
 	"github.com/golang-gui/goui/platform"
@@ -17,6 +21,7 @@ import (
 	"github.com/golang-gui/goui/platform/graphics/software"
 	"github.com/golang-gui/goui/platform/typography"
 	"github.com/golang-gui/goui/style"
+	"github.com/rivo/uniseg"
 )
 
 // 单行控件、绘制与输入契约。
@@ -1126,4 +1131,827 @@ func TestTextInputObscuredClipboardAndPreedit(t *testing.T) {
 	if input.Text() != "é中文12" {
 		t.Fatal("遮蔽控件不能粘贴")
 	}
+}
+
+func textSelectionClick(t *testing.T, win *window, point geometry.Point) {
+	t.Helper()
+	editorPointer(t, win, events.PointerDown, point, 0)
+	editorPointer(t, win, events.PointerUp, point, 0)
+}
+
+// 固定时钟只控制连续点击判定；所有输入仍经过Window.DispatchEvent。
+func multiclickFixture(t *testing.T, single bool) (*textEditor, *window, *time.Time) {
+	t.Helper()
+	var editor *textEditor
+	var win *window
+	if single {
+		v, w, _ := newInputFixture(t, "one two")
+		v.Arrange(geometry.Rect(0, 0, 240, 40))
+		v.SetSelection(TextSelection{})
+		editor, win = v.textEditor, w
+	} else {
+		v, w, _ := newEditorFixture(t, "one two\nend")
+		editor, win = v.textEditor, w
+	}
+	now := time.Unix(100, 0)
+	editor.input.now = func() time.Time { return now }
+	return editor, win, &now
+}
+
+func TestTextEditorMultiClickSequenceAndSignals(t *testing.T) {
+	for _, single := range []bool{false, true} {
+		t.Run(map[bool]string{false: "TextView", true: "TextInput"}[single], func(t *testing.T) {
+			e, win, now := multiclickFixture(t, single)
+			point := geometry.Point{X: 24, Y: 20}
+			end := 8
+			if single {
+				end = 7
+			}
+			changes := 0
+			e.connectSelection(func(TextSelection) { changes++ })
+			for i, want := range []TextSelection{{Anchor: 2, Caret: 2}, {Anchor: 0, Caret: 3}, {Anchor: 0, Caret: end}, {Anchor: 2, Caret: 2}} {
+				textSelectionClick(t, win, point)
+				if e.selection != want || changes != i+1 || e.owner.Snapshot().TextEditing.Selection != want {
+					t.Fatalf("第%d击选区/信号=%+v/%d，预期%+v/%d", i+1, e.selection, changes, want, i+1)
+				}
+				*now = now.Add(100 * time.Millisecond)
+			}
+		})
+	}
+}
+
+func TestTextEditorMultiClickResetsAfterInterruption(t *testing.T) {
+	for _, name := range []string{"超时", "时钟回退", "远处", "拖动返回", "键盘", "滚轮", "失焦", "禁用", "卸载", "模型替换", "正文修改", "次键"} {
+		t.Run(name, func(t *testing.T) {
+			e, win, now := multiclickFixture(t, false)
+			point := geometry.Point{X: 24, Y: 8}
+			textSelectionClick(t, win, point)
+			*now = now.Add(100 * time.Millisecond)
+			editorPointer(t, win, events.PointerDown, point, 0)
+			if e.selection != (TextSelection{Caret: 3}) {
+				t.Fatal("前置双击没有选词")
+			}
+			if name == "拖动返回" {
+				editorPointer(t, win, events.PointerMove, geometry.Point{X: 54, Y: 8}, 0)
+				editorPointer(t, win, events.PointerMove, point, 0)
+			}
+			editorPointer(t, win, events.PointerUp, point, 0)
+			*now = now.Add(100 * time.Millisecond)
+			switch name {
+			case "超时":
+				*now = now.Add(501 * time.Millisecond)
+			case "时钟回退":
+				*now = now.Add(-time.Second)
+			case "远处":
+				point.X = 44
+			case "键盘":
+				editorKey(t, win, events.KeyHome, 0)
+			case "滚轮":
+				_ = win.DispatchEvent(events.WheelEvent{})
+			case "失焦":
+				win.SetFocusedWidget(nil)
+			case "禁用":
+				e.owner.SetEnabled(false)
+				e.owner.SetEnabled(true)
+			case "卸载":
+				win.SetWidget(nil)
+				win.SetWidget(e.owner)
+				e.owner.Arrange(geometry.Rect(0, 0, 209, 108))
+			case "模型替换":
+				e.setModel(NewTextModel("one two\nend"))
+			case "正文修改":
+				if err := e.model.Replace(TextRange{Start: 10, End: 11}, "!"); err != nil {
+					t.Fatal(err)
+				}
+			case "次键":
+				// 只派发次键按下；本fixture没有原生菜单宿主。
+				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerDown, Button: events.PointerButtonMiddle, Position: point})
+				_ = win.DispatchEvent(events.PointerEvent{EventType: events.PointerUp, Button: events.PointerButtonMiddle, Position: point})
+			}
+			win.SetFocusedWidget(e.owner)
+			textSelectionClick(t, win, point)
+			want := TextSelection{Anchor: 2, Caret: 2}
+			if name == "远处" {
+				want = TextSelection{Anchor: 4, Caret: 4}
+			}
+			if e.selection != want {
+				t.Fatalf("%s后沿用了多击历史：%+v，预期%+v", name, e.selection, want)
+			}
+		})
+	}
+}
+
+func TestTextEditorTripleClickLineDragPreservesAnchor(t *testing.T) {
+	v, win, _ := newEditorFixture(t, "aa\nbb\ncc\ndd")
+	point := geometry.Point{X: 14, Y: 28}
+	textSelectionClick(t, win, point)
+	textSelectionClick(t, win, point)
+	editorPointer(t, win, events.PointerDown, point, 0)
+	for _, step := range []struct {
+		point geometry.Point
+		want  TextSelection
+	}{
+		{geometry.Point{X: 15, Y: 28}, TextSelection{Anchor: 3, Caret: 6}},
+		{geometry.Point{X: 15, Y: 48}, TextSelection{Anchor: 3, Caret: 9}},
+		{geometry.Point{X: 15, Y: 68}, TextSelection{Anchor: 3, Caret: 11}},
+		{geometry.Point{X: 15, Y: 8}, TextSelection{Anchor: 6, Caret: 0}},
+		{geometry.Point{X: 15, Y: 28}, TextSelection{Anchor: 3, Caret: 6}},
+	} {
+		editorPointer(t, win, events.PointerMove, step.point, 0)
+		if v.Selection() != step.want {
+			t.Fatalf("整行拖动到%v选区=%+v，预期%+v", step.point, v.Selection(), step.want)
+		}
+	}
+	editorPointer(t, win, events.PointerUp, point, 0)
+	if v.input.CapturingPointer() || win.dispatcher.captureTarget != nil {
+		t.Fatal("整行拖动结束后仍捕获输入")
+	}
+}
+
+func TestTextEditorTripleClickThresholds(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		interval time.Duration
+		distance float32
+		triple   bool
+	}{
+		{"时间边界", 500 * time.Millisecond, 0, true},
+		{"超时一纳秒", 500*time.Millisecond + time.Nanosecond, 0, false},
+		{"距离边界", 100 * time.Millisecond, 4, true},
+		{"距离超限", 100 * time.Millisecond, 5, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, win, now := multiclickFixture(t, false)
+			point := geometry.Point{X: 24, Y: 8}
+			textSelectionClick(t, win, point)
+			*now = now.Add(100 * time.Millisecond)
+			textSelectionClick(t, win, point)
+			*now = now.Add(tc.interval)
+			point.X += tc.distance
+			textSelectionClick(t, win, point)
+			if tc.triple && e.selection != (TextSelection{Caret: 8}) || !tc.triple && e.selection.Anchor != e.selection.Caret {
+				t.Fatalf("多击阈值结果错误：%+v", e.selection)
+			}
+		})
+	}
+}
+
+func TestTextEditorTripleClickAutoScrollKeepsWholeLines(t *testing.T) {
+	v, scroll, win, q, _ := timedEditorFixture(t)
+	v.input.now = q.s.now
+	point := geometry.Point{X: 14, Y: 28}
+	textSelectionClick(t, win, point)
+	textSelectionClick(t, win, point)
+	editorPointer(t, win, events.PointerDown, point, 0)
+	if v.Selection() != (TextSelection{Anchor: 4, Caret: 8}) {
+		t.Fatal("三击没有选中第二行row及LF", v.Selection())
+	}
+	editorPointer(t, win, events.PointerMove, geometry.Point{X: 14, Y: 160}, 0)
+	before := v.Selection().Caret
+	for range 4 {
+		q.advance(textScrollInterval)
+		q.dispatch(t)
+	}
+	if scroll.ScrollY() <= 0 || v.Selection().Anchor != 4 || v.Selection().Caret <= before || v.Selection().Caret%4 != 0 {
+		t.Fatal("自动滚动没有继续整行扩选", scroll.ScrollY(), v.Selection())
+	}
+	editorPointer(t, win, events.PointerUp, point, 0)
+	if v.input.CapturingPointer() || v.scrollTimer.Active() {
+		t.Fatal("释放后整行自动滚动仍运行")
+	}
+}
+
+func TestTextEditorTripleClickSelectionCallbackInvalidation(t *testing.T) {
+	for _, action := range []string{"卸载", "禁用后恢复", "模型替换"} {
+		t.Run(action, func(t *testing.T) {
+			e, win, now := multiclickFixture(t, false)
+			point := geometry.Point{X: 24, Y: 8}
+			textSelectionClick(t, win, point)
+			*now = now.Add(100 * time.Millisecond)
+			textSelectionClick(t, win, point)
+			called := false
+			e.connectSelection(func(s TextSelection) {
+				if called || s != (TextSelection{Caret: 8}) {
+					return
+				}
+				called = true
+				switch action {
+				case "卸载":
+					win.SetWidget(nil)
+				case "禁用后恢复":
+					e.owner.SetEnabled(false)
+					e.owner.SetEnabled(true)
+				case "模型替换":
+					e.setModel(NewTextModel("new"))
+				}
+			})
+			*now = now.Add(100 * time.Millisecond)
+			editorPointer(t, win, events.PointerDown, point, 0)
+			selection := e.selection
+			editorPointer(t, win, events.PointerMove, geometry.Point{X: 44, Y: 48}, 0)
+			editorPointer(t, win, events.PointerUp, point, 0)
+			if !called || e.selection != selection || e.input.CapturingPointer() || win.dispatcher.captureTarget != nil {
+				t.Fatal("选择回调失效后仍沿用旧整行拖动", e.selection, selection)
+			}
+		})
+	}
+}
+
+func TestTextEditorMultiClickCanceledPressStartsNewSequence(t *testing.T) {
+	e, win, now := multiclickFixture(t, false)
+	point := geometry.Point{X: 24, Y: 8}
+	textSelectionClick(t, win, point)
+	*now = now.Add(100 * time.Millisecond)
+	textSelectionClick(t, win, point)
+	*now = now.Add(100 * time.Millisecond)
+	for _, event := range []events.PointerEvent{
+		{EventType: events.PointerDown, Button: events.PointerButtonLeft, Buttons: events.PointerButtonLeftDown, Position: point},
+		{EventType: events.PointerMove, Position: point}, // 观察到主键已释放，分发器取消当前手势。
+		{EventType: events.PointerUp, Button: events.PointerButtonLeft, Position: point},
+	} {
+		if err := win.DispatchEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if e.input.CapturingPointer() || win.dispatcher.captureTarget != nil {
+		t.Fatal("取消三击后没有释放捕获")
+	}
+	*now = now.Add(100 * time.Millisecond)
+	textSelectionClick(t, win, point)
+	if e.selection != (TextSelection{Anchor: 2, Caret: 2}) {
+		t.Fatal("取消后下一击没有重新定位", e.selection)
+	}
+}
+
+func TestTextEditorMultiClickStopsAfterIMEResetChangesModel(t *testing.T) {
+	e, win, _ := multiclickFixture(t, false)
+	e.onPreedit("候选", 1)
+	e.im = &editorResetIM{IMContext: e.im, onReset: func() {
+		e.model.SetText("replacement")
+	}}
+	editorPointer(t, win, events.PointerDown, geometry.Point{X: 24, Y: 8}, 0)
+	if e.model.Text() != "replacement" || e.selection != (TextSelection{}) || e.input.CapturingPointer() || win.dispatcher.captureTarget != nil {
+		t.Fatal("IME取消回调改文档后仍按旧命中位置建立选择", e.selection)
+	}
+}
+
+// 三击必须在第三次按下就选中整条逻辑行；软换行不成为文档边界。
+func TestTextEditorTripleClickSelectsLogicalLine(t *testing.T) {
+	for _, tc := range []struct {
+		name, text string
+		point      geometry.Point
+		width      float32
+		want       TextSelection
+	}{
+		{"中间行及LF", "aa\n中e\u0301 👩‍💻\nlast", geometry.Point{X: 6, Y: 28}, 209, TextSelection{Anchor: 3, Caret: 22}},
+		{"空行及LF", "a\n\nz", geometry.Point{X: 6, Y: 28}, 209, TextSelection{Anchor: 2, Caret: 3}},
+		{"末行无LF", "a\nlast", geometry.Point{X: 6, Y: 28}, 209, TextSelection{Anchor: 2, Caret: 6}},
+		{"末尾空行", "a\n", geometry.Point{X: 6, Y: 28}, 209, TextSelection{Anchor: 2, Caret: 2}},
+		{"软换行", "abcdefghij\nlast", geometry.Point{X: 6, Y: 28}, 58, TextSelection{Anchor: 0, Caret: 11}},
+		{"空文档", "", geometry.Point{X: 6, Y: 8}, 209, TextSelection{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v, win, _ := newEditorFixture(t, tc.text)
+			v.Arrange(geometry.Rect(0, 0, tc.width, 108))
+			revision := v.Model().Revision()
+			textSelectionClick(t, win, tc.point)
+			textSelectionClick(t, win, tc.point)
+			editorPointer(t, win, events.PointerDown, tc.point, 0)
+			if v.Selection() != tc.want {
+				t.Fatalf("第三次按下选区=%+v，预期%+v", v.Selection(), tc.want)
+			}
+			editorPointer(t, win, events.PointerUp, tc.point, 0)
+			if v.Snapshot().TextEditing.Selection != tc.want || v.Model().Revision() != revision || v.Model().Text() != tc.text || v.input.CapturingPointer() {
+				t.Fatal("三击改变正文、遗漏语义选区或未释放捕获")
+			}
+		})
+	}
+}
+
+func TestTextInputTripleClickSelectsAll(t *testing.T) {
+	for _, mode := range []string{"普通", "只读", "密码"} {
+		t.Run(mode, func(t *testing.T) {
+			v, win, _ := newInputFixture(t, "one two 中")
+			v.Arrange(geometry.Rect(0, 0, 240, 40))
+			v.SetSelection(TextSelection{})
+			v.SetReadOnly(mode == "只读")
+			v.SetObscured(mode == "密码")
+			changes := 0
+			v.ConnectText(func(string) { changes++ })
+			point := geometry.Point{X: 24, Y: 20}
+			textSelectionClick(t, win, point)
+			textSelectionClick(t, win, point)
+			editorPointer(t, win, events.PointerDown, point, 0)
+			want := TextSelection{Caret: len("one two 中")}
+			if v.Selection() != want {
+				t.Fatalf("三击选区=%+v，预期%+v", v.Selection(), want)
+			}
+			editorPointer(t, win, events.PointerUp, point, 0)
+			if changes != 0 || v.Snapshot().TextEditing.Selection != want {
+				t.Fatal("三击发出正文变更或遗漏Snapshot选区")
+			}
+		})
+	}
+}
+
+// Shared typography and painter doubles.
+
+// setTestApplication 临时替换包级 App，并在测试清理时恢复。
+// 调用者不能与其他修改 App 的 fixture 并行执行。
+func setTestApplication(t *testing.T, typo typography.Context) {
+	t.Helper()
+	oldApp := App
+	App = &application{typo: typo}
+	t.Cleanup(func() {
+		App = oldApp
+	})
+}
+
+type textLayoutCall struct {
+	text   string
+	format typography.TextFormat
+	width  float32
+	height float32
+}
+
+type testTypography struct {
+	measureSize geometry.Size
+	lines       []typography.TextLine
+	clusters    []typography.TextCluster
+	calls       []textLayoutCall
+	layouts     []*testTextLayout
+}
+
+func (c *testTypography) Name() string {
+	return "test"
+}
+
+func (c *testTypography) Destroy() {}
+
+func (c *testTypography) AddFont(fontFile string) error {
+	return nil
+}
+
+func (c *testTypography) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
+	c.calls = append(c.calls, textLayoutCall{
+		text:   text,
+		format: format,
+		width:  width,
+		height: height,
+	})
+	layout := &testTextLayout{
+		text:        text,
+		format:      format,
+		width:       width,
+		height:      height,
+		measureSize: c.measureSize,
+		lines:       c.lines,
+		clusters:    c.clusters,
+	}
+	c.layouts = append(c.layouts, layout)
+	return layout, nil
+}
+
+type testTextLayout struct {
+	text         string
+	format       typography.TextFormat
+	width        float32
+	height       float32
+	measureSize  geometry.Size
+	lines        []typography.TextLine
+	clusters     []typography.TextCluster
+	destroyed    bool
+	resized      func()
+	metricsCalls int
+	changedSig   signal.Signal0
+	destroySig   signal.Signal0
+}
+
+func (l *testTextLayout) Destroy() {
+	if l.destroyed {
+		return
+	}
+	l.destroyed = true
+	l.destroySig.Emit()
+}
+
+func (l *testTextLayout) Rasterize(float32, image.Rectangle, []byte) (typography.TextBitmap, error) {
+	return typography.TextBitmap{}, nil
+}
+
+func (l *testTextLayout) ConnectChanged(fn func()) signal.Handle {
+	return l.changedSig.Connect(fn)
+}
+
+func (l *testTextLayout) ConnectDestroy(fn func()) signal.Handle {
+	return l.destroySig.Connect(fn)
+}
+
+func (l *testTextLayout) Text() string {
+	return l.text
+}
+
+func (l *testTextLayout) Format() typography.TextFormat {
+	return l.format
+}
+
+func (l *testTextLayout) Size() (maxWidth, maxHeight float32) {
+	return l.width, l.height
+}
+
+func (l *testTextLayout) SetSize(maxWidth, maxHeight float32) {
+	if l.width == maxWidth && l.height == maxHeight {
+		return
+	}
+	l.width = maxWidth
+	l.height = maxHeight
+	if l.resized != nil {
+		l.resized()
+	}
+	l.changedSig.Emit()
+}
+
+func (l *testTextLayout) SetTextAlignment(align typography.TextAlignment) {
+	l.format.TextAlign = align
+	l.changedSig.Emit()
+}
+
+func (l *testTextLayout) SetWrapMode(wrap typography.WrapMode) {
+	l.format.WrapMode = wrap
+	l.changedSig.Emit()
+}
+
+func (l *testTextLayout) SetTabWidth(width float32) { l.format.TabWidth = width }
+
+func (l *testTextLayout) SetTextFont(start, length int, font typography.FontInfo) {
+	l.format.Font = font
+	l.changedSig.Emit()
+}
+
+func (l *testTextLayout) SetTextColor(start, length int, c color.Color) {
+	l.format.TextColor = c
+	l.changedSig.Emit()
+}
+
+func (l *testTextLayout) SetUnderline(start, length int, underline bool) {
+	l.changedSig.Emit()
+}
+
+func (l *testTextLayout) SetStrikethrough(start, length int, strike bool) {
+	l.changedSig.Emit()
+}
+
+func (l *testTextLayout) SetPlaceholder(int, *typography.PlaceholderMetrics) {}
+
+func (l *testTextLayout) MeasureSize() (width, height float32) {
+	return l.measureSize.Width, l.measureSize.Height
+}
+
+func (l *testTextLayout) MeasureMetrics() (lines []typography.TextLine, clusters []typography.TextCluster) {
+	l.metricsCalls++
+	return l.lines, l.clusters
+}
+
+type testLabelPainter struct {
+	textOrigin geometry.Point
+	textLayout typography.TextLayout
+}
+
+func (p *testLabelPainter) SnapRect(r geometry.Rectangle) geometry.Rectangle { return r }
+
+func (p *testLabelPainter) Save() {}
+
+func (p *testLabelPainter) Restore() {}
+
+func (p *testLabelPainter) PixelScale() float32 { return 1 }
+
+func (p *testLabelPainter) NewImage(src image.Image) (graphics.Image, error) {
+	return newTestNativeImage(src), nil
+}
+
+func (p *testLabelPainter) SetClipRect(rect geometry.Rectangle) {}
+
+func (p *testLabelPainter) FillRect(rect geometry.Rectangle, brush graphics.Brush) {}
+
+func (p *testLabelPainter) FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush) {
+}
+
+func (p *testLabelPainter) FillEllipse(center geometry.Point, xRadius, yRadius float32, brush graphics.Brush) {
+}
+
+func (p *testLabelPainter) FillPath(path graphics.Path, brush graphics.Brush) {}
+
+func (p *testLabelPainter) DrawLine(p0, p1 geometry.Point, strokeWidth float32, brush graphics.Brush) {
+}
+
+func (p *testLabelPainter) DrawRect(rect geometry.Rectangle, strokeWidth float32, brush graphics.Brush) {
+}
+
+func (p *testLabelPainter) DrawRoundRect(rect geometry.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
+}
+
+func (p *testLabelPainter) DrawEllipse(center geometry.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush) {
+}
+
+func (p *testLabelPainter) DrawPath(path graphics.Path, strokeWidth float32, brush graphics.Brush) {
+}
+
+func (p *testLabelPainter) DrawTextLayout(origin geometry.Point, layout typography.TextLayout) {
+	p.textOrigin = origin
+	p.textLayout = layout
+}
+
+func (p *testLabelPainter) DrawImage(rect geometry.Rectangle, img graphics.Image) {}
+
+func (p *testLabelPainter) SetTransform(matrix geometry.Transform) {}
+
+func (p *testLabelPainter) DrawBoxShadow(rect geometry.Rectangle, radius geometry.CornerRadius, shadow graphics.BoxShadow) {
+}
+
+// Shared input event and painting helpers.
+
+func dispatchKey(t *testing.T, win Window, key events.Key, modifiers events.Modifiers) {
+	t.Helper()
+	if err := win.DispatchEvent(events.KeyEvent{
+		EventType: events.KeyDown,
+		Key:       key,
+		Modifiers: modifiers,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type testTextInputPainter struct {
+	testLabelPainter
+	fillRect            geometry.Rectangle
+	fillRadius          float32
+	fillBrush           graphics.Brush
+	fillPath            graphics.Path
+	fillPathBrush       graphics.Brush
+	fills               []geometry.Rectangle
+	clipRect            geometry.Rectangle
+	drawRect            geometry.Rectangle
+	drawRadius          float32
+	drawRectStrokeWidth float32
+	drawRectBrush       graphics.Brush
+	drawLines           int
+	lineP0              geometry.Point
+	lineP1              geometry.Point
+	lineStrokeWidth     float32
+	lineBrush           graphics.Brush
+}
+
+func (p *testTextInputPainter) FillRect(rect geometry.Rectangle, brush graphics.Brush) {
+	if len(p.fills) == 0 {
+		p.fillRect, p.fillBrush = rect, brush
+	}
+	p.fills = append(p.fills, rect)
+}
+
+func (p *testTextInputPainter) FillPath(path graphics.Path, brush graphics.Brush) {
+	p.fillPath, p.fillPathBrush = path, brush
+}
+
+func (p *testTextInputPainter) SetClipRect(rect geometry.Rectangle) { p.clipRect = rect }
+
+func (p *testTextInputPainter) FillRoundRect(rect geometry.Rectangle, radius float32, brush graphics.Brush) {
+	p.fillRect = rect
+	p.fillRadius = radius
+	p.fillBrush = brush
+	p.fills = append(p.fills, rect)
+}
+
+func (p *testTextInputPainter) DrawRect(rect geometry.Rectangle, strokeWidth float32, brush graphics.Brush) {
+	p.drawRect = rect
+	p.drawRectStrokeWidth = strokeWidth
+	p.drawRectBrush = brush
+}
+
+func (p *testTextInputPainter) DrawRoundRect(rect geometry.Rectangle, radius, strokeWidth float32, brush graphics.Brush) {
+	p.drawRect = rect
+	p.drawRadius = radius
+	p.drawRectStrokeWidth = strokeWidth
+	p.drawRectBrush = brush
+}
+
+func (p *testTextInputPainter) DrawLine(p0, p1 geometry.Point, strokeWidth float32, brush graphics.Brush) {
+	p.drawLines++
+	p.lineP0 = p0
+	p.lineP1 = p1
+	p.lineStrokeWidth = strokeWidth
+	p.lineBrush = brush
+}
+
+// newInputFixture 使用固定排版，在替身窗口中挂载并聚焦单行编辑器，测试清理时卸载。
+func newInputFixture(t *testing.T, text string) (*TextInput, *window, *editorTypography) {
+	t.Helper()
+	typo := &editorTypography{}
+	setTestApplication(t, typo)
+	input := NewTextInput()
+	input.SetText(text)
+	win := testWindowWithSurface(&window{})
+	win.SetWidget(input)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	input.Arrange(geometry.Rect(0, 0, 80, 40))
+	win.SetFocusedWidget(input)
+	return input, win, typo
+}
+
+// Deterministic editor geometry, clipboard and window fixtures.
+
+// Fixture typography has 10 DIP cells and 20 DIP lines. It is deliberately
+// independent of editor geometry; shaping/bidi contracts have separate tests.
+type editorTypography struct{ testTypography }
+
+func (c *editorTypography) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
+	l, _ := c.testTypography.NewTextLayout(text, format, width, height)
+	p := l.(*testTextLayout)
+	p.resized = func() { layoutEditorFixture(p) }
+	layoutEditorFixture(p)
+	return p, nil
+}
+
+func layoutEditorFixture(p *testTextLayout) {
+	text, format, width := p.text, p.format, p.width
+	p.lines, p.clusters = nil, nil
+	line := typography.TextLine{Height: 20, Baseline: 15}
+	x, y := float32(0), float32(0)
+	for offset, r := range text {
+		if x+10 > width && x > 0 && format.WrapMode != WrapNone {
+			line.Length = offset - line.Start
+			line.Width = x
+			p.lines = append(p.lines, line)
+			x, y = 0, y+20
+			line = typography.TextLine{Start: offset, Y: y, Height: 20, Baseline: y + 15}
+		}
+		cluster := typography.TextCluster{Start: offset, Length: utf8.RuneLen(r), X: x, Y: y, Width: 10, Height: 20, LineIndex: len(p.lines)}
+		p.clusters = append(p.clusters, cluster)
+		x += 10
+	}
+	line.Length = len(text) - line.Start
+	line.Width = x
+	p.lines = append(p.lines, line)
+	p.measureSize = geometry.Size{Width: x, Height: y + 20}
+}
+
+func newEditorFixture(t *testing.T, text string) (*TextView, *window, *editorTypography) {
+	t.Helper()
+	typo := &editorTypography{}
+	setTestApplication(t, typo)
+	editor := NewTextView()
+	editor.SetModel(NewTextModel(text))
+	win := testWindowWithSurface(&window{})
+	win.SetWidget(editor)
+	editor.Arrange(geometry.Rect(0, 0, 209, 108))
+	win.SetFocusedWidget(editor)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	return editor, win, typo
+}
+
+func editorKey(t *testing.T, win *window, key events.Key, modifiers events.Modifiers) {
+	t.Helper()
+	if err := win.DispatchEvent(events.KeyEvent{EventType: events.KeyDown, Key: key, Modifiers: modifiers}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type editorClipboard struct {
+	text    string
+	pending func(string, error)
+}
+
+func (c *editorClipboard) SetText(s string) error { c.text = s; return nil }
+
+func (c *editorClipboard) RequestText(fn func(string, error)) { c.pending = fn }
+
+// timedEditorFixture 组合固定排版和可控计时队列，测试显式推进时间，不使用 sleep。
+func timedEditorFixture(t *testing.T) (*TextView, *ScrollView, *window, *timerTestQueue, *editorTypography) {
+	t.Helper()
+	q := newTimerTestQueue(t)
+	typo := &editorTypography{}
+	q.app.typo = typo
+	old := App
+	App = q.app
+	t.Cleanup(func() { App = old })
+	editor := NewTextView()
+	editor.blinkNow = q.s.now
+	editor.SetModel(NewTextModel(strings.Repeat("row\n", 100)))
+	scroll := NewScrollView()
+	scroll.SetChild(editor)
+	win := testWindowWithSurface(&window{})
+	win.SetWidget(scroll)
+	t.Cleanup(func() { win.SetWidget(nil) })
+	box := geometry.Rect(0, 0, 220, 108)
+	scroll.Measure(layout.Tight(box.Size))
+	scroll.Arrange(box)
+	win.SetFocusedWidget(editor)
+	if err := win.DispatchEvent(events.FocusEvent{Focused: true}); err != nil {
+		t.Fatal(err)
+	}
+	return editor, scroll, win, q, typo
+}
+
+// Wrapped editor fixtures and normal pointer dispatch.
+
+func longWrappedEditor(t *testing.T) (*TextView, *ScrollView, *window, *editorTypography) {
+	t.Helper()
+	v, scroll, win, _, typo := timedEditorFixture(t)
+	v.Model().SetText(strings.Repeat("abcdefghij", 1000))
+	win.width, win.height = 220, 108
+	settleEditorLayout(t, win)
+	return v, scroll, win, typo
+}
+
+func settleEditorLayout(t *testing.T, win *window) {
+	t.Helper()
+	for range 8 {
+		if !win.layoutDirty {
+			return
+		}
+		win.layoutFrame(win.Widget())
+	}
+	t.Fatal("editor layout did not settle")
+}
+
+func editorPointer(t *testing.T, win *window, kind events.EventType, point geometry.Point, mods events.Modifiers) {
+	t.Helper()
+	if err := win.DispatchEvent(events.PointerEvent{
+		EventType: kind, Position: point, Button: events.PointerButtonLeft, Modifiers: mods,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (p *testLabelPainter) ClearPath(path graphics.Path) {}
+
+// 固定 10 DIP 字格、20 DIP 行高的输入，不承担系统字体匹配或原生 shaping。
+func newContractContext() (typography.Context, error) { return &contractTypography{}, nil }
+
+type contractTypography struct{ testTypography }
+
+func (c *contractTypography) NewTextLayout(text string, format typography.TextFormat, width, height float32) (typography.TextLayout, error) {
+	l, err := c.testTypography.NewTextLayout(text, format, width, height)
+	if err != nil {
+		return nil, err
+	}
+	p := l.(*testTextLayout)
+	p.resized = func() { layoutContractText(p) }
+	layoutContractText(p)
+	return &contractTextLayout{p}, nil
+}
+
+func layoutContractText(p *testTextLayout) {
+	p.lines, p.clusters = nil, nil
+	x, y, start := float32(0), float32(0), 0
+	finish := func(end int) {
+		p.lines = append(p.lines, typography.TextLine{Start: start, Length: end - start, Width: x, Y: y, Height: 20, Baseline: y + 15})
+		start, x, y = end, 0, y+20
+	}
+	rtl := strings.Contains(p.text, "\u202e")
+	g := uniseg.NewGraphemes(p.text)
+	for g.Next() {
+		at, end := g.Positions()
+		r, _ := utf8.DecodeRuneInString(g.Str())
+		advance := float32(10)
+		if unicode.Is(unicode.Cf, r) {
+			advance = 0
+		}
+		if x+advance > p.width && x > 0 && p.format.WrapMode != WrapNone {
+			finish(at)
+		}
+		cluster := typography.TextCluster{Start: at, Length: end - at, X: x, Y: y, Width: advance, Height: 20, LineIndex: len(p.lines)}
+		if rtl || p.text == "אבג" || p.text == "אב" {
+			cluster.Direction = typography.TextRightToLeft
+		}
+		p.clusters = append(p.clusters, cluster)
+		x += advance
+	}
+	if p.text == "אבג" || p.text == "אב" {
+		for i := range p.clusters {
+			p.clusters[i].X = x - p.clusters[i].X - p.clusters[i].Width
+		}
+	}
+	p.measureSize = geometry.Size{Width: x, Height: y + 20}
+	finish(len(p.text))
+}
+
+type contractTextLayout struct{ *testTextLayout }
+
+// 有色位图只用来检查视口请求和合成，不模拟系统字形；格式色和预乘契约保持一致。
+func (l *contractTextLayout) Rasterize(_ float32, region image.Rectangle, buf []byte) (typography.TextBitmap, error) {
+	count := region.Dx() * region.Dy() * 4
+	if cap(buf) < count {
+		buf = make([]byte, count)
+	} else {
+		buf = buf[:count]
+	}
+	ink := l.format.TextColor
+	if ink == nil {
+		ink = color.Black
+	}
+	r, g, b, a := ink.RGBA()
+	for i := 0; i < len(buf); i += 4 {
+		buf[i], buf[i+1], buf[i+2], buf[i+3] = byte(r>>8), byte(g>>8), byte(b>>8), byte(a>>8)
+	}
+	return typography.TextBitmap{Width: region.Dx(), Height: region.Dy(), Stride: region.Dx() * 4, Pixels: buf}, nil
 }
