@@ -770,6 +770,19 @@ StyleSheet、不破坏独立 Widget 样式和原生装饰隔离。
 多 StyleName、Class／ID selector 仅保留评估方向，不恢复 CSS／隐式级联或局部样式树。
 见 [DesignStyle](DesignStyle.md#deferred-evaluation-not-a-committed-api)／[Modern](DesignModernStyle.md)。
 
+<a id="future-scene-graph"></a>
+
+### 即时绘制与场景图：后续评估（2026-11-25）
+
+当前保留传统即时 Painter 绘制模式，优先满足应用开发，完善功能、绘制正确性和
+有实际证据的性能问题。场景图及独立合成体系不属于当前目标，不安排实现切片。
+底层统一像素对齐计算，样式和复合图形继续使用已有绘制 helper／SnapRect 契约。
+
+后续可按需求评估保留共同几何语义、统一对齐时机、绘制指令记录和跨帧复用。
+届时须明确资源失效与释放，并对照验证性能和质量；场景图本身不保证收益，
+也不预设需要改变 Widget 或声明式 UI。讨论依据与边界见
+[Widget Painter](DesignWidgetPainter.md#immediate-rendering-direction)。
+
 <a id="future-performance"></a>
 
 ### 进一步高频更新与渲染优化：测量触发

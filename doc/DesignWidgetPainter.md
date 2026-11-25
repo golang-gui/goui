@@ -17,6 +17,43 @@ GOUI 将绘图上下文和 Widget 树遍历严格分开：
 管理子控件，而不是让 Painter 认识 Widget。GOUI 不复制 QPainter 的全部可变
 pen/brush 状态；Brush 和 stroke width 仍显式随绘制调用传入。
 
+<a id="immediate-rendering-direction"></a>
+
+### 即时绘制与后续优化（2026-11-25）
+
+当前继续采用传统即时绘制：Widget 在同步 Paint 中通过 gui.Painter 提供本次绘制
+指令，GUI 管理遍历和作用域，platform 绘制实现负责设备坐标、栅格化和呈现。
+这里的“即时”描述绘制接口，不改变 Widget 树和声明式 UI 的既有职责，也不要求
+后端每次图元调用都立即提交 GPU；后端仍可在现有帧内组织和批量执行命令。
+
+当前优先满足应用开发需要，完善控件、绘制正确性和实际使用中的性能问题。
+场景图、跨帧保留渲染节点及独立合成体系不属于当前目标，不作为功能交付的前置。
+后续允许根据真实应用需求和测量结果调整，不预先建立另一套渲染树或公共接口。
+
+像素网格换算与对齐算法继续由底层统一实现。样式 helper 处理普通背景和边框的
+共同几何；需要保持共同外框的复合图形可使用现有 SnapRect 查询，再计算内部几何。
+这不改变布局、命中和语义边界，也不将后端覆盖率、抗锯齿或坐标转换错误交给
+控件补偿。连续动画和任意曲线继续遵守各图元的小数坐标契约。
+
+后续渲染优化保留以下评估方向，尚未确定实现或排期：
+
+- 将共同外框、圆角、边框及图形组合关系保留到统一的渲染位置，在已知最终变换、
+  缩放和裁剪后执行适当的对齐，减少控件分别处理像素网格的需要。
+- 按需求评估绘制指令记录、节点或子树复用、合批及缓存，明确所有权、失效和释放。
+  即时 Painter 接口可以与内部命令记录共存，不预设需要重设计 Widget 或 ui 层。
+- 场景图描述、矢量渲染和系统合成分别评估。合成已栅格化内容不能修复其中已有的
+  模糊边缘；记录独立图元也不会自动恢复共同几何。性能和质量收益须通过相同环境、
+  后端和内容规模的对照确认，不能仅因采用场景图就宣称改善。
+
+参考边界：[GTK4 绘制模型](https://docs.gtk.org/gtk4/drawing-model.html)区分节点构建、
+缓存与渲染；[GTK 4.18.6 边框处理](https://github.com/GNOME/gtk/blob/4.18.6/gsk/gpu/gskgpunodeprocessor.c#L1898)
+保留外轮廓、宽度和颜色交给边框绘制操作；Windows App SDK 1.8 的
+[IsPixelSnappingEnabled](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.composition.visual.ispixelsnappingenabled?view=windows-app-sdk-1.8)
+是明确的 Visual 对齐选择；Apple 的
+[Core Animation Basics](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/CoreAnimation_guide/CoreAnimationBasics/CoreAnimationBasics.html)
+说明内容缓存和合成动画。以上用于理解职责与取舍，不构成 GOUI 的实现或性能承诺。
+路线状态见 [Roadmap](Roadmap.md#future-scene-graph)。
+
 ## 2. 公共接口
 
 ```go
