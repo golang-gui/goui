@@ -213,8 +213,11 @@ helper 降级仍只承诺现有 GUI 内容输入隔离，其原生激活限制�
 1. 建立连接级信号接收，调用前登记 handle_token 对应的预计 Request 路径并订阅
    Response，防止快速取消／成功先于方法返回而丢失。核对实际返回路径，归并早到
    响应；不能采用方法返回后才开始监听的顺序，不能仅凭相同接口名接受其他请求结果。
-2. 有效方法返回后等待 Request.Response。response=0 表示成功；1 是用户取消，
-   返回空结果／nil；2 或未知值作为失败，不能归为用户主动取消。
+2. 有效方法返回后等待 Request.Response。response=0 表示成功并校验结果；1 表示
+   用户取消，2 表示交互以其他方式结束。文件选择器将 1／2 都作为未确认选择结束，
+   返回空结果／nil，不读取或交付其中的 uris，也不启动 helper。2 不能说明具体结束
+   原因，不能据此宣称用户按了 Esc 或发生系统故障。未知响应码、损坏响应、D-Bus
+   调用失败、连接断开和服务退出继续返回错误；owner 销毁仍按生命周期错误处理。
 3. owner 销毁时沿现有 cancelFileDialogs 路径取消操作，并关闭对应远端 Request。
    Request.Close 不再发送 Response，因此本地必须自行结束并回调 ErrUnavailable。
 4. 取消发生在方法返回前时，取消后仍需处理迟到的请求句柄并关闭；不能只取消 Go
@@ -269,6 +272,17 @@ transient/modal 属性；没有 Portal 后端时不能只验 helper 后宣称 Po
 参考：[FileChooser 参数与版本](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.FileChooser.html)、
 [Request 路径／响应／Close](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html)、
 [父窗口标识](https://flatpak.github.io/xdg-desktop-portal/docs/window-identifiers.html)。
+
+2026-11-25 响应解释修正依据：Portal 规范只将 2 定义为交互以其他方式结束。
+[xdg-desktop-portal-gtk 1.14.0](https://github.com/flatpak/xdg-desktop-portal-gtk/blob/1.14.0/src/filechooser.c#L219)
+的 `file_chooser_response` 将 GTK_RESPONSE_DELETE_EVENT 映射为 2、CANCEL 映射为 1；
+本地该版本的 Esc、关闭按钮与 Cancel 实测结果记录在 [Plan](Plan.md)。
+[GTK 4.18.6](https://github.com/GNOME/gtk/blob/4.18.6/gtk/gtkfilechoosernativeportal.c#L186)
+将 2 转为 DELETE_EVENT，其 [FileDialog](https://github.com/GNOME/gtk/blob/4.18.6/gtk/gtkfiledialog.c#L850)
+将 CANCEL／DELETE_EVENT 都归为 dismissed；
+[Qt 6.8.3](https://github.com/qt/qtbase/blob/v6.8.3/src/plugins/platformthemes/xdgdesktopportal/qxdgdesktopportalfiledialog.cpp#L436)
+将非零选择响应交付为 reject。GOUI 采用已知结束响应 1／2 不产生文件的解释，
+继续拒绝未知码与协议损坏，不扩大 helper 降级条件，也不根据后端版本猜测按键行为。
 
 ## 验证
 

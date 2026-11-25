@@ -17,6 +17,9 @@
 //     点击 A 后应回到选择器，点击 B 仍可激活。记录实际 WM 的激活结果。
 //  2. Open folder、Save file 重复第 1 项，选择成功和取消均应恢复输入。
 //     Save 仅选择路径，不创建文件。本例成功后打印所选名称并关闭 FileAccess。
+//     分别用 Esc、Cancel 和窗口关闭按钮结束三个选择器，均应只完成一次，error=<nil>，
+//     不输出 SELECTED、不启动第二个选择器；随后 Increment A 和重新选择仍可用。
+//     Linux Portal 1／2 都表示未确认选择结束，不能把旧 GTK 后端的 Esc 响应 2 当作故障。
 //     Open file 支持 Ctrl 多选；文件／保存选择器提供 Text 和 All files 过滤器，
 //     Windows/Linux 可切换分组；macOS 原生类型列表合并分组，此时允许全部文件。
 //     选择多项时逐一打印并释放。
