@@ -1,5 +1,14 @@
 # GOUI 实用化与未来路线
 
+## 下一版本：WindowHandle 与 HeaderBar 分工（2026-11-26）
+
+计划新增轻量 WindowHandle，供任意内容区域复用窗口拖动；HeaderBar 保留标题行
+与窗口按钮协作，默认透明、零 Padding，保留居中和可覆盖的 40 DIP 最小高度，
+补充显式内容对齐。两者复用 Chrome 命中与交互，不建立第二套移动机制。
+本项尚未实现，整体安排在 v0.8.2 之后。契约及验证要求见
+[设计](DesignGUIWindowChrome.md#planned-windowhandle-and-headerbar-separation)，
+任务进度见 [Plan](Plan.md#windowhandle-headerbar-next)。
+
 ## v0.8.2 发布准备（2026-11-25）
 
 Demo 更新为 0.8.2 / build 1，在现有九页中展示自适应菜单栏、级联菜单、命令勾选、

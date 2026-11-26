@@ -1,5 +1,20 @@
 # Plan
 
+<a id="windowhandle-headerbar-next"></a>
+
+## WindowHandle 与 HeaderBar 分工（下一版本，2026-11-26）
+
+- [x] 确认最终职责与发布范围，见
+  [设计](DesignGUIWindowChrome.md#planned-windowhandle-and-headerbar-separation)。
+  本项整体安排到 v0.8.2 之后，不阻塞本轮发布，也不提前宣称 API 已实现。
+- [ ] 增加轻量的 gui.WindowHandle／ui.WindowHandle：单子项透传，无默认装饰、
+  留白或最小高度；复用既有 Chrome 命中与交互，不参与窗口按钮避让和高度协作。
+- [ ] HeaderBar 默认透明、Padding 改为 0；保留默认垂直居中及可覆盖的 40 DIP
+  最小高度，提供显式内容对齐入口，保留窗口按钮的实际占位避让和标题行高度协作。
+- [ ] 抽取共享拖动查询逻辑，核对 Native 装饰模式下的能力接入、交互优先级、
+  嵌套及跨窗口挂载；补齐布局、基线、命中、语义与生命周期回归和必要的原生验收。
+  同步正式示例与迁移说明；不在本轮引入通用安全区或障碍布局。
+
 ## 原尺寸图片的设备像素对齐（2026-11-26）
 
 - [x] 确认 Demo 的 80×80 结束帧因小数物理像素位置被再次采样；共享 pixelsnap 算法
