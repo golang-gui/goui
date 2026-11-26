@@ -1,5 +1,28 @@
 # Plan
 
+## 原尺寸图片的设备像素对齐（2026-11-26）
+
+- [x] 确认 Demo 的 80×80 结束帧因小数物理像素位置被再次采样；共享 pixelsnap 算法
+  仅调整一一对应图片在纯平移下的起点，三后端接入。尺寸、长宽比、clip、图片生命周期
+  和上层 API 保持；缩放与其他用户变换保留原坐标。契约及参考见
+  [DesignGraphicsColor](DesignGraphicsColor.md#原尺寸图片的设备像素对齐2026-11-26)。
+- [x] 在既有主题中补充共享判定、Software 与 Direct2D 原生回归，并扩展
+  [image_update](../tests/window/graphics/image_update/main.go) 的跨后端离屏断言。
+  Software 的新增断言在修复前复现重复滤波，修复后通过。
+- [x] Go 1.25.8 的已跟踪源码快照执行 `go test -p 4 -json ./... -count=1`：
+  82 个测试包、6,548 项测试及子测试通过，无失败或测试跳过；159 个包无测试。
+  pixelsnap、textbitmap、Software、gui、ui 的针对性 race 检查及受影响包的 vet 通过；
+  Linux amd64、Windows amd64、macOS arm64 的 Demo 与窗口用例构建通过。
+- [x] Windows 10／Direct2D WARP 原生包测试 138 项通过，无失败或跳过。
+  Linux X11／xfwm4（关闭桌面合成）下 Software、OpenGL，Windows 10 下 Direct2D，
+  macOS 15.7.7 下 OpenGL，均以应用缩放 1×／2× 完成 `image_update -auto`：
+  每次提交两个原生帧，独立断言 1×／1.25×／1.5×／2× 的源像素、透明合成、裁剪与既有采样。
+- [x] Windows Direct2D／1× 实际操作 Demo，核对亮暗主题的 32→80 DIP 动画结束帧，
+  正常关闭窗口。完整 Logo 原生回读在 .21875 像素偏移下与源图逐字节相同；
+  三组放大、缩小、小数尺寸的 Direct2D 输出与修复前一致。测试进程与独立桌面会话已清理。
+- 未执行真实跨屏 DPI 切换或物理 Retina 验收；macOS 本轮执行的是上述原生窗口程序，
+  未重跑 Demo 全流程交互。离屏断言及应用缩放覆盖不替代这些验收。
+
 <a id="v082-preparation"></a>
 
 ## v0.8.2 发布准备（2026-11-25）

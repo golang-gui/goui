@@ -12,6 +12,8 @@
 //  3. 以各后端和 1x/2x 重启；透明合成、Transform、clip 由离屏像素断言核验。
 //     SAMPLING PASS 独立检查 1x/1.25x/1.5x/2x 整数与小数定位的图片缩放中间值；
 //     下方两条黑白渐变只因 .25 DIP 位移有轻微差异，不能一条变成硬边。
+//     ONE-TO-ONE PASS 在相同缩放下检查原尺寸图片的 .21875／半像素偏移，
+//     起点应对齐物理像素，源像素、尺寸及透明合成保持，clip 外内容不改变。
 //     -auto 在两个原生帧提交及其间离屏检查后退出，不代替步骤 2 的视觉验收。
 //
 // 平台差异：窗口装饰使用原生样式；不依赖透明窗口或桌面合成器。
@@ -24,6 +26,7 @@ import (
 	"image"
 	"image/color"
 	"log"
+	"math"
 	"runtime"
 	"strings"
 
@@ -272,7 +275,10 @@ func checkPixels(p graphics.Painter) error {
 		}
 	}
 	fmt.Printf("PIXELS PASS painter=%s scales=1,1.5,2\n", p.Name())
-	return checkSampling(p)
+	if err := checkSampling(p); err != nil {
+		return err
+	}
+	return checkOneToOne(p)
 }
 
 func abs(n int) int {
@@ -315,5 +321,64 @@ func checkSampling(p graphics.Painter) error {
 		}
 	}
 	fmt.Printf("SAMPLING PASS painter=%s scales=1,1.25,1.5,2\n", p.Name())
+	return nil
+}
+
+func checkOneToOne(p graphics.Painter) error {
+	src := image.NewRGBA(image.Rect(3, 4, 5, 6))
+	colors := [4]color.RGBA{{R: 43, A: 57}, {G: 127, A: 128}, {B: 255, A: 255}, {}}
+	for i, c := range colors {
+		src.SetRGBA(3+i%2, 4+i/2, c)
+	}
+	im, err := p.NewImage(src)
+	if err != nil {
+		return err
+	}
+	defer im.Destroy()
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		for _, phase := range []float32{.21875, .5, -.5} {
+			for _, clipped := range []bool{false, true} {
+				for _, matte := range []color.RGBA{{}, {R: 20, G: 40, B: 60, A: 255}} {
+					transform := geometry.Translate(.37, -.13)
+					result, err := p.RenderImage(20, 16, scale, func() {
+						p.Clear(graphics.ColorOf(matte))
+						p.SetTransform(transform)
+						if clipped {
+							p.SetClipRect(graphics.Rect(8.2/scale, 5.2/scale, 1/scale, 2/scale))
+						}
+						p.DrawImage(graphics.Rect((7+phase)/scale-transform.TX, (5+phase)/scale-transform.TY, 2/scale, 2/scale), im)
+					})
+					if err != nil {
+						return err
+					}
+					left, top := int(math.Floor(float64(7+phase)+.5)), int(math.Floor(float64(5+phase)+.5))
+					for y := range 16 {
+						for x := range 20 {
+							want := matte
+							if x >= left && x < left+2 && y >= top && y < top+2 && (!clipped || x >= 8 && x < 10 && y >= 5 && y < 8) {
+								c := colors[(y-top)*2+x-left]
+								inv := uint32(255 - c.A)
+								want = color.RGBA{
+									R: c.R + uint8((uint32(matte.R)*inv+127)/255),
+									G: c.G + uint8((uint32(matte.G)*inv+127)/255),
+									B: c.B + uint8((uint32(matte.B)*inv+127)/255),
+									A: c.A + uint8((uint32(matte.A)*inv+127)/255),
+								}
+							}
+							r, g, b, a := result.At(x, y).RGBA()
+							got := color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a >> 8)}
+							// 预乘 sRGB/RGBA8；容差 1 仅覆盖 GPU 合成与量化，不容许重复滤波。
+							for _, pair := range [][2]uint8{{got.R, want.R}, {got.G, want.G}, {got.B, want.B}, {got.A, want.A}} {
+								if abs(int(pair[0])-int(pair[1])) > 1 {
+									return fmt.Errorf("one-to-one scale=%g phase=%g clip=%v matte=%v (%d,%d)=%v want=%v", scale, phase, clipped, matte, x, y, got, want)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	fmt.Printf("ONE-TO-ONE PASS painter=%s scales=1,1.25,1.5,2\n", p.Name())
 	return nil
 }
