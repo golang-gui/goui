@@ -4,6 +4,10 @@ This contract supersedes the freely composed WindowControls design. The existing
 platform Chrome implementation passed the user's three-platform acceptance.
 This slice changes GUI ownership and layout, not native chrome mechanisms.
 
+The [planned WindowHandle/HeaderBar separation](#planned-windowhandle-and-headerbar-separation)
+is scheduled after v0.8.2. It does not change the implemented contract below or
+describe APIs already available in v0.8.2.
+
 ## Ownership
 
 Window owns one private controls group in Integrated mode. Applications neither
@@ -170,6 +174,127 @@ from its persistent state, and disconnects/clears them on unmount. ID matching
 uses gui.Pick inside that signal, after GUI has checked occlusion and controls.
 It needs no cached widgets, rectangles or snapshot invalidation. There is no
 UI OnDragRegion coordinate callback or additional GUI caption registration API.
+
+<a id="planned-windowhandle-and-headerbar-separation"></a>
+
+## Planned WindowHandle and HeaderBar separation
+
+Decision (2026-11-26): implement this work in the next version after v0.8.2.
+It is a composition/API improvement, not an identified release-blocking failure.
+Existing Chrome queries remain available for custom regions. v0.8.2 retains its
+current HeaderBar background, 8 DIP padding, vertical centering and 40 DIP default
+minimum; this section records future behavior, not a migration already required.
+
+### Responsibilities and defaults
+
+| Concern | WindowHandle | HeaderBar |
+| --- | --- | --- |
+| Purpose | Window-caption interaction around arbitrary content | A title row cooperating with window-owned controls |
+| Content | One optional child | One optional child; no mandatory title or slots |
+| Layout | Forward child measurement/baseline and the assigned content rectangle; no implicit centering | Keep natural-height vertical centering by default; allow explicit content alignment |
+| Default minimum | No added minimum | Keep the overridable 40 DIP minimum |
+| Default appearance/padding | Transparent, with no added padding | Transparent, padding 0 |
+| Controls cooperation | Does not reserve space or answer controls-height queries | Retain controls avoidance and eligible top-row height queries |
+
+Free composition does not require a title-row container to have no defaults.
+WindowHandle serves full-height sidebars and other arbitrary drag surfaces;
+HeaderBar serves actual title rows. An entire sidebar must not become a
+HeaderBar merely to enable dragging: its height would also position the controls.
+
+HeaderBar's 40 DIP minimum is a constructor default, not an OS requirement or a
+fixed height. Existing size setters and parent constraints continue to govern
+the allocation; taller content can increase it. Native/custom control bounds
+remain authoritative for avoidance, rather than being inferred from this value.
+
+An explicit vertical content-alignment setting must support start, center, end
+and stretch using existing layout terminology. Center remains the default.
+Start/center/end preserve the child's measured height; stretch supplies the
+available height. Apply this within the rectangle remaining after controls
+reservation and explicit padding, and keep baseline measurement consistent with
+arrangement. Content alignment must not change which row answers QueryControls
+or how window controls are positioned within that row.
+
+Transparent defaults do not remove style painting. Both containers can paint
+explicitly requested decoration over their own allocations; HeaderBar's default
+theme must stop supplying a background. Padding remains a HeaderBar layout
+option, separate from appearance. Applications can explicitly restore the old
+background and 8 DIP padding or select another title-row presentation.
+
+### API direction and shared interaction
+
+The intended minimal entry points are:
+
+```go
+handle := gui.NewWindowHandle()
+handle.SetChild(content)
+
+ui.WindowHandle(contentView)
+```
+
+WindowHandle provides Child/SetChild and ConnectDragRegion with the same local
+coordinate and synchronous query contract as HeaderBar. Its UI binding is thin,
+with Child, Captions and ordinary ViewBase modifiers; omitted options restore
+constructor defaults. It adds no special padding, title or controls slots.
+Use ordinary content containers for margins and composition.
+
+Extract the common caption-region classification and querying logic for both
+widgets. Reuse WindowChrome for native hit testing, gesture handoff and existing
+caption interactions, including supported double-click maximize/restore. Do not
+add a second move gesture, direct semantic-action shortcut, public native handle
+or mandatory extra wrapper in HeaderBar's Widget tree.
+
+Automatic classification still uses the actual window-level hit and its live
+ancestor path: focusable widgets and Click/Drag/Wheel/unknown controllers retain
+client input; known passive Motion/Key/DropTarget controllers do not prevent
+caption behavior. Queries can explicitly refine the result. Covering siblings,
+ancestor clipping, visibility, enabled state, controls and resize edges retain
+their existing precedence. Nested WindowHandles and mixed HeaderBar regions
+must not cause duplicate moves or accidentally claim interactive descendants;
+retain the documented Chrome query ordering rather than adding a hidden
+registration priority system.
+
+Connect on mount and disconnect on unmount; remounting in another window must
+not retain the old host. Modal scopes, capture, destruction and completed-layout
+validity stay under the existing Window/dispatcher/Chrome rules. Snapshots expose
+an ordinary container and the child's actual bounds, with no invented focus,
+button or draggable semantic action.
+
+### Platform boundary and verification
+
+WindowHandle must not change the window's decoration mode. Current Chrome
+initialization returns early for Native mode; implementation must review the
+coupling between decoration integration and movement before claiming support
+there. Use actual window capabilities and existing native move contracts. Do not
+silently switch a Native window to Integrated/None, bypass normal event
+dispatch, or claim unsupported hosts work. This plan is not native acceptance.
+
+Keep controls avoidance in HeaderBar. Future screen safe-area support may supply
+additional factual occupied geometry, but this work does not introduce a
+generic SafeArea service, obstacle layout or mobile title-bar policy.
+
+Extend existing topic tests for natural/bounded/unbounded measurement, baseline,
+all supported alignments, empty/hidden content, size overrides, asymmetric
+padding and explicit/default styles. Cover hit/semantic boundaries, interactive
+descendants, occlusion, clipping, nested regions, local-query coordinates,
+mount/unmount/remount, modal/capture and destruction. Regress split HeaderBars,
+control placement and narrow allocations without adding native dependencies to
+shared package tests.
+
+Use dedicated window programs for real native moves and controls cooperation;
+check Native/Integrated/None per actual platform capability and record gaps.
+Run the full repository suite and affected-target compilation. Native behavior
+changes require the corresponding platform acceptance; shared layout changes
+alone do not justify repeating an unrelated platform matrix. Update formal
+examples and migration guidance together when the implementation ships.
+
+Reference: GTK 4.24.1 documents
+[WindowHandle](https://docs.gtk.org/gtk4/class.WindowHandle.html) as title-bar
+interaction and [HeaderBar](https://docs.gtk.org/gtk4/class.HeaderBar.html) as
+title-row composition with controls. GTK 4.20.3's
+[WindowHandle implementation](https://github.com/GNOME/gtk/blob/4.20.3/gtk/gtkwindowhandle.c)
+is an implementation reference. GOUI adopts the responsibility split, not GTK's
+CSS/gesture machinery or a claim that its dimensions and native behavior match
+GOUI. The 40 DIP choice remains a GOUI default, not a GTK or OS guarantee.
 
 ## Scope and verification
 
