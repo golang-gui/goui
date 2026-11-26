@@ -37,9 +37,9 @@ func (m *monitor) view() ui.View {
 
 func (m *monitor) header() ui.View {
 	// The icon shows the palette the button switches to.
-	theme, label := m.icons.sun, "切换到亮色"
+	theme, label := m.icons.sun, "Switch to light theme"
 	if !m.dark {
-		theme, label = m.icons.moon, "切换到暗色"
+		theme, label = m.icons.moon, "Switch to dark theme"
 	}
 	return ui.HeaderBar(ui.HBox(
 		ui.Label("GOUI Monitor").Style(styleTitle),
@@ -68,7 +68,7 @@ func (m *monitor) cpuCard() *ui.BoxView {
 					MinSize(64, 64).MaxSize(64, 64),
 				ui.VBox(
 					ui.Label(fmt.Sprintf("%.1f%%", r.CPU)).Style(styleValue),
-					ui.Label(fmt.Sprintf("负载 %.2f · %d 核", load, cpuCores)).Style(styleMuted),
+					ui.Label(fmt.Sprintf("Load %.2f · %d cores", load, cpuCores)).Style(styleMuted),
 				).Spacing(2),
 			).Spacing(18)
 		}),
@@ -77,7 +77,7 @@ func (m *monitor) cpuCard() *ui.BoxView {
 
 func (m *monitor) memoryCard() *ui.BoxView {
 	return card(
-		ui.Label("内存").Style(styleCaption),
+		ui.Label("Memory").Style(styleCaption),
 		ui.Build(func() ui.View {
 			r := m.shown.Get()
 			return ui.VBox(
@@ -86,7 +86,7 @@ func (m *monitor) memoryCard() *ui.BoxView {
 					ui.Label(fmt.Sprintf("/ %.0f GB", float32(memoryTotal))).Style(styleMuted),
 				).Spacing(6).CrossAlign(layout.CrossBaseline),
 				wui.ProgressBar(r.Memory/memoryTotal).Thickness(6).Style(styleMeter),
-				ui.Label(fmt.Sprintf("已用 %.0f%% · 可用 %.1f GB", r.Memory/memoryTotal*100, memoryTotal-r.Memory)).Style(styleMuted),
+				ui.Label(fmt.Sprintf("Used %.0f%% · %.1f GB free", r.Memory/memoryTotal*100, memoryTotal-r.Memory)).Style(styleMuted),
 			).Spacing(10).CrossAlign(layout.CrossStretch)
 		}),
 	)
@@ -94,15 +94,15 @@ func (m *monitor) memoryCard() *ui.BoxView {
 
 func (m *monitor) networkCard() *ui.BoxView {
 	return card(
-		ui.Label("网络").Style(styleCaption),
+		ui.Label("Network").Style(styleCaption),
 		ui.Build(func() ui.View {
 			r := m.shown.Get()
 			return ui.HBox(
-				ui.VBox(ui.Label("↓ 下载").Style(styleMuted), ui.Label(formatRate(r.Down)).Style(styleTitle)).Spacing(2),
-				ui.VBox(ui.Label("↑ 上传").Style(styleMuted), ui.Label(formatRate(r.Up)).Style(styleTitle)).Spacing(2),
+				ui.VBox(ui.Label("↓ Download").Style(styleMuted), ui.Label(formatRate(r.Down)).Style(styleTitle)).Spacing(2),
+				ui.VBox(ui.Label("↑ Upload").Style(styleMuted), ui.Label(formatRate(r.Up)).Style(styleTitle)).Spacing(2),
 			).Spacing(24)
 		}),
-		newChart("网络速率", func(p gui.Painter, size geometry.Size) {
+		newChart("Network rate", func(p gui.Painter, size geometry.Size) {
 			c := m.palette()
 			ceiling := max(slices.Max(m.sim.down), 1) * 1.15
 			drawSeries(p, size, ceiling, m.scroll, series{values: m.sim.down, color: c.accent, fill: true})
@@ -114,12 +114,12 @@ func (m *monitor) networkCard() *ui.BoxView {
 func (m *monitor) historyCard() ui.View {
 	return card(
 		ui.HBox(
-			ui.Label("CPU 使用率").Style(styleTitle),
-			ui.Label("最近 60 秒").Style(styleMuted),
+			ui.Label("CPU usage").Style(styleTitle),
+			ui.Label("last 60 s").Style(styleMuted),
 			ui.HBox().MainWeight(1),
 			ui.Label("100%").Style(styleMuted),
 		).Spacing(10),
-		newChart("CPU 使用率", func(p gui.Painter, size geometry.Size) {
+		newChart("CPU usage", func(p gui.Painter, size geometry.Size) {
 			c := m.palette()
 			line := c.accent
 			if m.sim.current.CPU > highCPU {
@@ -142,7 +142,7 @@ func (m *monitor) processCard() *ui.BoxView {
 	}
 	table := ui.Build(func() ui.View {
 		return wui.TableView[process](m.processes,
-			wui.TableColumn("name", "名称", func(_ widgets.TableRow, p process) ui.View { return cell(p.Name, styleCell, false) }).
+			wui.TableColumn("name", "Name", func(_ widgets.TableRow, p process) ui.View { return cell(p.Name, styleCell, false) }).
 				Width(220).MinWidth(140).Expand(true).Sortable(true),
 			wui.TableColumn("pid", "PID", func(_ widgets.TableRow, p process) ui.View { return cell(fmt.Sprint(p.PID), styleCellMuted, true) }).
 				Width(80).Resizable(false),
@@ -150,9 +150,9 @@ func (m *monitor) processCard() *ui.BoxView {
 				return cell(fmt.Sprintf("%.1f%%", p.CPU), styleCell, true)
 			}).
 				Width(90).Resizable(false).Sortable(true),
-			wui.TableColumn("memory", "内存", func(_ widgets.TableRow, p process) ui.View { return cell(formatMemory(p.Memory), styleCell, true) }).
+			wui.TableColumn("memory", "Memory", func(_ widgets.TableRow, p process) ui.View { return cell(formatMemory(p.Memory), styleCell, true) }).
 				Width(100).Resizable(false).Sortable(true),
-			wui.TableColumn("usage", "占用", func(_ widgets.TableRow, p process) ui.View {
+			wui.TableColumn("usage", "Usage", func(_ widgets.TableRow, p process) ui.View {
 				bar := styleBar
 				if p.CPU > 30 {
 					bar = styleBarHigh
@@ -173,8 +173,8 @@ func (m *monitor) processCard() *ui.BoxView {
 	})
 	return card(
 		ui.HBox(
-			ui.Label("进程").Style(styleTitle),
-			ui.Label(fmt.Sprintf("%d 个", len(m.sim.processes))).Style(styleMuted),
+			ui.Label("Processes").Style(styleTitle),
+			ui.Label(fmt.Sprintf("%d total", len(m.sim.processes))).Style(styleMuted),
 		).Spacing(10).Paddings(geometry.Insets{Left: 12, Right: 12}),
 		ui.Modify(table).MainWeight(1),
 	).Paddings(geometry.Insets{Left: 4, Right: 4, Top: 16, Bottom: 4}).Spacing(8)
