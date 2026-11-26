@@ -29,6 +29,8 @@
   适配 ASCII 大小写；Linux Portal 的取消和其他未选择结束响应正常返回空结果。
 - **绘制：** Direct2D 曲线使用原生椭圆、圆角及 GeometrySink 弧段，保持抗锯齿；
   样式盒形的矩形、统一圆角、混合圆角和选边路径共用对齐后的外框。
+  原尺寸图片由绘制后端统一对齐物理像素起点，避免小数布局位置带来的再次滤波；
+  图片缩放和其他用户变换继续正常采样。
   Demo 的 ListRow 操作箭头使用矢量图标，不依赖字体字形。
 - **macOS 分发工具：** 独立 PKCS#12 证书与 Notary API 密钥可用于跨平台 Developer ID
   签名、Apple 公证、票据装订及 ZIP 归档。已有 macOS 钥匙串入口保留；正式分发仍
@@ -115,6 +117,14 @@ ui.MenuBar(
 NoKeepRunning 是窗口创建选项，默认 false；声明式同 ID 重建不能修改创建选项。
 应用退出时这些窗口仍被清理，不等同于脱离应用生命周期。
 
+### 原尺寸图片的绘制行为
+
+DrawImage 在总变换只有平移、目标物理宽高分别等于源像素宽高时，自动对齐最终起点。
+尺寸、长宽比与裁剪不变，原尺寸平移按物理像素步进；缩放、旋转、错切和镜像保留
+原坐标及线性采样。Icon／Image 的用法不变，无须新增设置。自定义绘制若依赖
+原尺寸图片的小数平移，应核对这一行为变化，规则见
+[图片绘制契约](DesignGraphicsColor.md#原尺寸图片的设备像素对齐2026-11-26)。
+
 ## English release notes
 
 Status: **preparing v0.8.2**, compared with v0.8.1. The source demo is **0.8.2 / build 1**;
@@ -134,7 +144,8 @@ published downloads remain v0.8.1 until the new release is available.
   Linux Portal non-selection responses as dismissal while preserving protocol and
   communication errors.
 - Use native Direct2D curves and consistent styled-box outer contours. Use a vector
-  arrow for the Demo's actionable ListRow.
+  arrow for the Demo's actionable ListRow. Align one-to-one images to physical-pixel
+  origins across renderers, preserving filtered geometry for scaling and other transforms.
 - Support portable Developer ID signing, Apple notarization, ticket stapling and ZIP
   creation with PKCS#12 and API-key files.
 
@@ -144,6 +155,8 @@ must report FilterFormat and accept native FileFilter.Values. Rename
 ui.CommandGroup to ui.CommandScope. The TabBar target-ID constructor is unchanged;
 external scrollbars use ui.ScrollBar(axis, targetID). Checkable commands must publish
 their state in the activation handler. Existing events key/modifier APIs remain.
+DrawImage now snaps one-to-one images under pure translation to physical-pixel
+origins; their placement advances in pixel steps. Icon and Image need no new options.
 
 The demo retains nine pages and eight languages, adding menu-bar presentation,
 cascading menus, shared checks, external scrolling and file-filter examples in the

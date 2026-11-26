@@ -706,6 +706,71 @@ func TestDrawImageAlignedOneToOnePreservesPixels(t *testing.T) {
 	}
 }
 
+func TestDrawImageOneToOneSnapsDeviceOrigin(t *testing.T) {
+	p, err := NewPainter(new(testDrawer))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Destroy()
+	// 非零原点、父图 stride 及预乘 RGBA；透明与半透明硬边使重复滤波直接破坏断言。
+	parent := image.NewRGBA(image.Rect(0, 0, 9, 8))
+	src := parent.SubImage(image.Rect(2, 3, 6, 6)).(*image.RGBA)
+	colors := [12]color.RGBA{
+		{}, {R: 43, A: 57}, {G: 127, A: 128}, {B: 255, A: 255},
+		{R: 255, A: 255}, {}, {B: 63, A: 64}, {R: 80, G: 30, A: 128},
+		{G: 255, A: 255}, {B: 17, A: 31}, {}, {R: 255, G: 255, B: 255, A: 255},
+	}
+	for i, c := range colors {
+		src.SetRGBA(2+i%4, 3+i/4, c)
+	}
+	im, err := p.NewImage(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer im.Destroy()
+	for _, scale := range []float32{1, 1.25, 1.5, 2} {
+		for _, phase := range []float32{.21875, .5, -.5} {
+			for _, clipped := range []bool{false, true} {
+				for _, matte := range []color.RGBA{{}, {R: 20, G: 40, B: 60, A: 255}} {
+					t.Run(fmt.Sprintf("scale=%g/phase=%g/clip=%v/alpha=%d", scale, phase, clipped, matte.A), func(t *testing.T) {
+						transform := geometry.Translate(.37, -.13)
+						result, err := p.RenderImage(20, 16, scale, func() {
+							p.Clear(graphics.ColorOf(matte))
+							p.SetTransform(transform)
+							if clipped {
+								p.SetClipRect(graphics.Rect(8.2/scale, 5.2/scale, 1/scale, 2/scale))
+							}
+							p.DrawImage(graphics.Rect((7+phase)/scale-transform.TX, (5+phase)/scale-transform.TY, 4/scale, 3/scale), im)
+						})
+						if err != nil {
+							t.Fatal(err)
+						}
+						// 预期直接按已知物理起点及 SourceOver 计算，不调用对齐或采样 helper。
+						left, top := int(math.Floor(float64(7+phase)+.5)), int(math.Floor(float64(5+phase)+.5))
+						for y := range 16 {
+							for x := range 20 {
+								want := matte
+								if x >= left && x < left+4 && y >= top && y < top+3 && (!clipped || x >= 8 && x < 10 && y >= 5 && y < 8) {
+									c := colors[(y-top)*4+x-left]
+									inv := uint32(255 - c.A)
+									want = color.RGBA{
+										R: c.R + uint8((uint32(matte.R)*inv+127)/255),
+										G: c.G + uint8((uint32(matte.G)*inv+127)/255),
+										B: c.B + uint8((uint32(matte.B)*inv+127)/255),
+										A: c.A + uint8((uint32(matte.A)*inv+127)/255),
+									}
+								}
+								// 容差 1 仅覆盖预乘合成舍入；透明底必须逐字节保留源像素。
+								assertColorNear(t, result.At(x, y), want, uint8(matte.A/255))
+							}
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
 func TestImageResourceRejectsWrongPainterAndDestroyedResource(t *testing.T) {
 	var firstDrawer, secondDrawer testDrawer
 	first, _ := NewPainter(&firstDrawer)

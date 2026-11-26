@@ -103,3 +103,43 @@ func TestEdgeHalfPixelTiesAndDegenerateGeometry(t *testing.T) {
 		t.Fatalf("zero-scale rect changed: %v", got)
 	}
 }
+
+func TestImageOneToOneOriginAndSize(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		rect, want    geometry.Rectangle
+		width, height int
+		transform     geometry.Transform
+		scale         float32
+	}{
+		{"demo", geometry.Rect(611, 528.21875, 80, 80), geometry.Rect(611, 528, 80, 80), 80, 80, geometry.Identity(), 1},
+		{"placement", geometry.Rect(0, 0, 80, 80), geometry.Rect(-.25, -.21875, 80, 80), 80, 80, geometry.Translate(611.25, 528.21875), 1},
+		{"half", geometry.Rect(.5, -.5, 4, 3), geometry.Rect(1, 0, 4, 3), 4, 3, geometry.Identity(), 1},
+		{"negative", geometry.Rect(-1.6, -2.6, 4, 3), geometry.Rect(-2, -3, 4, 3), 4, 3, geometry.Identity(), 1},
+		{"fractional-dpi", geometry.Rect(.2, .6, 64, 32), geometry.Rect(0, .8, 64, 32), 80, 40, geometry.Identity(), 1.25},
+		{"retina", geometry.Rect(.375, .125, 40, 20), geometry.Rect(.5, 0, 40, 20), 80, 40, geometry.Identity(), 2},
+		{"upscale", geometry.Rect(.2, .2, 80, 80), geometry.Rect(.2, .2, 80, 80), 32, 32, geometry.Identity(), 1},
+		{"downscale", geometry.Rect(.2, .2, 80, 80), geometry.Rect(.2, .2, 80, 80), 160, 160, geometry.Identity(), 1},
+		{"fractional-size", geometry.Rect(.2, .2, 79.5, 80), geometry.Rect(.2, .2, 79.5, 80), 80, 80, geometry.Identity(), 1},
+		{"near-size", geometry.Rect(.2, .2, math.Nextafter32(80, 0), 80), geometry.Rect(.2, .2, math.Nextafter32(80, 0), 80), 80, 80, geometry.Identity(), 1},
+		{"other-height", geometry.Rect(.2, .2, 80, 79), geometry.Rect(.2, .2, 80, 79), 80, 80, geometry.Identity(), 1},
+		{"user-scale", geometry.Rect(.2, .2, 80, 80), geometry.Rect(.2, .2, 80, 80), 80, 80, geometry.Scale(2, 2), 1},
+		{"rotation", geometry.Rect(.2, .2, 80, 80), geometry.Rect(.2, .2, 80, 80), 80, 80, geometry.Rotate(20), 1},
+		{"shear", geometry.Rect(.2, .2, 80, 80), geometry.Rect(.2, .2, 80, 80), 80, 80, geometry.Transform{A11: 1, A12: .25, A22: 1}, 1},
+		{"reflection", geometry.Rect(.2, .2, 80, 80), geometry.Rect(.2, .2, 80, 80), 80, 80, geometry.Scale(-1, 1), 1},
+		{"zero-scale", geometry.Rect(.2, .2, 80, 80), geometry.Rect(.2, .2, 80, 80), 80, 80, geometry.Identity(), 0},
+		{"zero-image", geometry.Rect(.2, .2, 80, 80), geometry.Rect(.2, .2, 80, 80), 0, 80, geometry.Identity(), 1},
+		{"invalid-scale", geometry.Rect(.2, .2, 80, 80), geometry.Rect(.2, .2, 80, 80), 80, 80, geometry.Identity(), float32(math.Inf(1))},
+		{"invalid-offset", geometry.Rect(.2, .2, 80, 80), geometry.Rect(.2, .2, 80, 80), 80, 80, geometry.Translate(float32(math.Inf(1)), 0), 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Image(tc.rect, tc.width, tc.height, tc.transform, tc.scale)
+			if got.Width != tc.rect.Width || got.Height != tc.rect.Height {
+				t.Fatalf("图片尺寸发生变化：%v -> %v", tc.rect, got)
+			}
+			if !(math.Abs(float64(got.X-tc.want.X)) <= 1e-6 && math.Abs(float64(got.Y-tc.want.Y)) <= 1e-6) {
+				t.Fatalf("图片矩形=%v，预期%v", got, tc.want)
+			}
+		})
+	}
+}

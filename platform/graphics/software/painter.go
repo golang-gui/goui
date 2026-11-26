@@ -639,6 +639,7 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
 		panic("software: image does not belong to painter or was destroyed")
 	}
 	native.lastDrawFrame = p.frameID
+	rect = pixelsnap.Image(rect, native.bitmap.Width, native.bitmap.Height, p.transform, p.scale)
 	if !p.drawAxisAlignedBitmap(rect, native.bitmap) {
 		p.drawBitmap(rect, native.bitmap)
 	}

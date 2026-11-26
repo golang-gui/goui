@@ -1051,6 +1051,7 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
 		native.bitmap = bitmap
 	}
 	native.lastDrawFrame = p.frameID
+	rect = pixelsnap.Image(rect, native.width, native.height, p.transform, p.scale)
 	p.drawNativeImage(rect, native.bitmap)
 }
 
