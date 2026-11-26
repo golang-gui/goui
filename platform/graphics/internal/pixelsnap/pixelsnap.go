@@ -70,6 +70,24 @@ func Rect(rect geometry.Rectangle, t geometry.Transform, scale float32) geometry
 	return geometry.Rect(left, top, right-left, bottom-top)
 }
 
+// Image aligns the origin of a one-to-one bitmap under translation and HiDPI.
+// Match physical extents in the same float32 arithmetic as drawing: genuine
+// fractional scaling must not become one-to-one through a tolerance. Preserve
+// the size, aspect ratio and all other transforms, including reflection.
+func Image(rect geometry.Rectangle, width, height int, t geometry.Transform, scale float32) geometry.Rectangle {
+	if !canSnap(t, scale) || width <= 0 || height <= 0 ||
+		rect.Width*scale != float32(width) || rect.Height*scale != float32(height) {
+		return rect
+	}
+	x, y := Edge(rect.X, t.TX, scale), Edge(rect.Y, t.TY, scale)
+	if math.IsNaN(float64(x)) || math.IsInf(float64(x), 0) ||
+		math.IsNaN(float64(y)) || math.IsInf(float64(y), 0) {
+		return rect
+	}
+	rect.X, rect.Y = x, y
+	return rect
+}
+
 func StrokeRect(rect geometry.Rectangle, width float32, t geometry.Transform, scale float32) geometry.Rectangle {
 	if !canSnap(t, scale) || width <= 0 {
 		return rect

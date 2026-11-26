@@ -196,7 +196,42 @@ Software 的整数对齐缩放和通用仿射路径均按设备像素中心映�
 对齐 1:1 绘制保留精确拷贝，不因位置是否整数切换缩放采样模式。
 已有资源快照测试的中间样本相应改为独立计算的插值及背景合成值，保留快照／裁剪断言。
 
-后端源码核对：Direct2D 的 DrawBitmap 使用 D2D1_BITMAP_INTERPOLATION_MODE_LINEAR；
+既有缩放采样修复的后端源码核对：Direct2D 的 DrawBitmap 使用 D2D1_BITMAP_INTERPOLATION_MODE_LINEAR；
 OpenGL 创建图片只指定 ImagePreMultiplied，nanovgo v0.0.13 的 gl_backend.go
-在未指定 ImageNearest 时使用 GL_LINEAR。此修复不添加采样选项或改变这两条路径。
+在未指定 ImageNearest 时使用 GL_LINEAR。该次修复只修改 Software 的采样，
+不添加采样选项或改变这两条路径的过滤模式。
 离屏与窗口用例覆盖整数／小数定位、预乘透明、裁剪和缩放；离屏像素通过不代替桌面呈现验收。
+
+### 原尺寸图片的设备像素对齐（2026-11-26）
+
+`graphics.Painter.DrawImage` 在绘制实现层统一处理原尺寸图片，不向 Icon／Image
+或声明式层增加 PixelSnap 属性。源图片仍为不可变预乘像素，生成、上传、缓存与
+销毁规则不变；GUI 控件保留逻辑布局、命中和语义边界。
+
+三后端复用 `pixelsnap.Image`，规则如下：
+
+- 当前总变换的线性部分为单位矩阵，允许控件布局和用户平移；帧 HiDPI 独立计算。
+- 目标 DIP 宽高乘帧缩放，分别等于图片的物理像素宽高时，才属于一一对应绘制。
+  比较使用绘制本身的 float32 算术，不以宽松容差把真正的小数缩放归为原尺寸。
+- 起点加上总平移后映射到物理像素，按 `floor(v + 0.5)` 就近取整，再映射回局部 DIP。
+  正负半像素均向正无穷取整，与既有矩形对齐一致。只调整起点，不调整宽高或长宽比，
+  不改变、扩大或重新计算已经建立的 clip。
+- 放大、缩小、小数尺寸以及用户旋转、缩放、错切、镜像保持原坐标及线性采样。
+  位图一一对应时的平移按物理像素步进；不承诺同时保留任意小数平移与无重采样。
+
+坐标判定与换算归 `platform/graphics`，`gui.Painter` 只转发。普通图片不需要了解
+设备像素，复合图形仍可用 SnapRect 查询共同几何；两者不是同一种上层责任。
+Software／OpenGL 的文字路径已对完整布局统一对齐，分块图片保持同一设备网格，
+本规则不替代文字自身的栅格尺寸与分区计算。
+
+缺陷依据：Windows 10／Direct2D／1× 的 Demo 动画结束帧，分配与源图均为 80×80，
+窗口局部 Y 为 528.21875 DIP；源 PNG 与独立栅格结果相同。原生回读确认，整数位置
+逐像素保留源图，而 .21875 像素偏移的输出与独立双线性计算一致。问题发生在已经
+栅格化后的再次采样，不是 SVG 缓存放大小图或 Software 采样修改传入 Direct2D。
+
+参考的边界：GTK 4.24 的 [Snapshot.set_snap](https://docs.gtk.org/gtk4/method.Snapshot.set_snap.html)
+把对齐作为绘制状态；[TextureNode](https://docs.gtk.org/gsk4/ctor.TextureNode.new.html)
+另行说明纹理变换的线性过滤。Qt Quick 6.10 的
+[QQuickImage 实现](https://github.com/qt/qtdeclarative/blob/v6.10.0/src/quick/items/qquickimage.cpp#L681)
+分别计算居中偏移和过滤模式。这些是文档／源码依据，不表示它们对所有父变换和
+后端承诺相同的物理像素结果；GOUI 仅采用区分定位与采样的原则，保留即时绘制接口。

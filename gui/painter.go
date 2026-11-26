@@ -59,6 +59,10 @@ type Painter interface {
 	DrawEllipse(center geometry.Point, xRadius, yRadius, strokeWidth float32, brush graphics.Brush)
 	DrawPath(path graphics.Path, strokeWidth float32, brush graphics.Brush)
 	DrawTextLayout(origin geometry.Point, layout typography.TextLayout)
+	// DrawImage maps immutable pixels to rect. One-to-one physical-pixel images
+	// under pure translation have their final origin aligned by the backend,
+	// including Widget placement and HiDPI; size and structural clip stay intact.
+	// Scaling and other user transforms retain their ordinary filtered geometry.
 	DrawImage(rect geometry.Rectangle, img graphics.Image)
 	// DrawBoxShadow draws in local DIP under the ordinary structural clip.
 	// Reserve room inside the widget bounds for the shadow.

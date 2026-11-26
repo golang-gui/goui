@@ -573,6 +573,7 @@ func (p *Painter) DrawImage(rect graphics.Rectangle, img graphics.Image) {
 		panic("opengl: image does not belong to painter or was destroyed")
 	}
 	native.lastDrawFrame = p.frameID
+	rect = pixelsnap.Image(rect, native.width, native.height, p.transform, p.scale)
 	p.drawImageHandle(rect, native.handle)
 }
 

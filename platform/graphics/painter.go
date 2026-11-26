@@ -75,5 +75,11 @@ type Painter interface {
 	DrawEllipse(center Point, xRadius, yRadius, strokeWidth float32, brush Brush)
 	DrawPath(path Path, strokeWidth float32, brush Brush)
 	DrawTextLayout(origin Point, layout typography.TextLayout)
+	// DrawImage draws img into rect using premultiplied linear sampling. Under
+	// a translation-only transform, if both DIP extents times the frame scale
+	// equal the source pixel dimensions, the final origin is rounded to device
+	// pixels (half-pixel ties toward positive infinity). Size and clip do not
+	// change; one-to-one translation advances in physical-pixel steps. Other
+	// scales and user rotation, scale, shear or reflection retain their geometry.
 	DrawImage(rect Rectangle, img Image)
 }
