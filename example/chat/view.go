@@ -255,26 +255,32 @@ func bubble(m message, mine bool) ui.View {
 	if mine {
 		box, text, at = styleSent, styleSentText, styleSentTime
 	}
-	return ui.VBox(
-		ui.Label(m.Text).WrapMode(gui.WrapWordChar).Style(text),
-		ui.HBox(ui.Label(m.Time).Style(at)).MainAlign(layout.MainEnd),
-	).Style(box).Spacing(2).CrossAlign(layout.CrossStretch).
+	// The timestamp shares the text's row and aligns with its last line, so a
+	// one-line message keeps a one-line bubble instead of adding an empty row.
+	return ui.HBox(
+		ui.Label(m.Text).WrapMode(gui.WrapWordChar).Style(text).MainWeight(1),
+		ui.Label(m.Time).Style(at),
+	).Style(box).Spacing(8).CrossAlign(layout.CrossEnd).
 		Paddings(geometry.Insets{Left: 14, Right: 12, Top: 8, Bottom: 6}).MaxWidth(bubbleMaxWidth)
 }
 
+// Bubbles are aligned on a VBox's cross axis rather than an HBox's main axis:
+// the cross axis bounds them by the available width, so a narrow window wraps
+// the text instead of clipping the bubble at its maximum width.
 func messageRow(contact *contact, m message, first, last bool) ui.View {
 	if m.mine() {
-		return ui.HBox(bubble(m, true)).MainAlign(layout.MainEnd)
+		return ui.VBox(bubble(m, true)).CrossAlign(layout.CrossEnd)
 	}
 	if !contact.Group {
-		return ui.HBox(bubble(m, false))
+		return ui.VBox(bubble(m, false)).CrossAlign(layout.CrossStart)
 	}
 	content := []ui.View{bubble(m, false)}
 	if first {
 		content = append([]ui.View{ui.HBox(ui.Label(m.Sender).Style(senderStyle(contact.memberColor(m.Sender)))).
 			Paddings(geometry.Insets{Left: 4})}, content...)
 	}
-	return ui.HBox(memberAvatar(contact, m.Sender, last), ui.VBox(content...).Spacing(4)).
+	return ui.HBox(memberAvatar(contact, m.Sender, last),
+		ui.VBox(content...).Spacing(4).CrossAlign(layout.CrossStart).MainWeight(1)).
 		Spacing(10).CrossAlign(layout.CrossEnd)
 }
 
