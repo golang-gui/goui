@@ -182,7 +182,6 @@ func (c *chat) messages() ui.View {
 		return ui.VBox()
 	}
 	items := make([]ui.View, 0, len(contact.Messages)+4)
-	receipt := lastMine(contact)
 	for i, m := range contact.Messages {
 		var prev, next *message
 		if i > 0 {
@@ -203,10 +202,6 @@ func (c *chat) messages() ui.View {
 		}
 		items = append(items, ui.VBox(messageRow(contact, m, first, last)).
 			Paddings(geometry.Insets{Top: gap}).CrossAlign(layout.CrossStretch))
-		if i == receipt {
-			items = append(items, ui.HBox(ui.Label("已读").Style(styleReceipt)).MainAlign(layout.MainEnd).
-				Paddings(geometry.Insets{Top: 4, Right: 4}))
-		}
 	}
 	if sender := c.typing[contact.ID]; sender != "" {
 		items = append(items, ui.VBox(typingRow(contact, sender)).
@@ -251,17 +246,13 @@ func daySeparator(day string) ui.View {
 }
 
 func bubble(m message, mine bool) ui.View {
-	box, text, at := styleReceived, styleReceivedText, styleSmall
+	box, text := styleReceived, styleReceivedText
 	if mine {
-		box, text, at = styleSent, styleSentText, styleSentTime
+		box, text = styleSent, styleSentText
 	}
-	// The timestamp shares the text's row and aligns with its last line, so a
-	// one-line message keeps a one-line bubble instead of adding an empty row.
-	return ui.HBox(
-		ui.Label(m.Text).WrapMode(gui.WrapWordChar).Style(text).MainWeight(1),
-		ui.Label(m.Time).Style(at),
-	).Style(box).Spacing(8).CrossAlign(layout.CrossEnd).
-		Paddings(geometry.Insets{Left: 14, Right: 12, Top: 8, Bottom: 6}).MaxWidth(bubbleMaxWidth)
+	// Equal top and bottom padding keep the text centered in the bubble.
+	return ui.VBox(ui.Label(m.Text).WrapMode(gui.WrapWordChar).Style(text)).Style(box).
+		Paddings(geometry.Insets{Left: 14, Right: 14, Top: 9, Bottom: 9}).MaxWidth(bubbleMaxWidth)
 }
 
 // Bubbles are aligned on a VBox's cross axis rather than an HBox's main axis:

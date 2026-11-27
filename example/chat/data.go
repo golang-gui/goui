@@ -159,17 +159,6 @@ func preview(c *contact) string {
 	return text
 }
 
-// lastMine is the index of the user's newest message, or -1. Only that
-// message carries a read receipt.
-func lastMine(c *contact) int {
-	for i := len(c.Messages) - 1; i >= 0; i-- {
-		if c.Messages[i].mine() {
-			return i
-		}
-	}
-	return -1
-}
-
 // lastActivity is the time label of the newest message.
 func lastActivity(c *contact) string {
 	if len(c.Messages) == 0 {
