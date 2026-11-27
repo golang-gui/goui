@@ -11,7 +11,7 @@ UI 的 View 是本次声明；不要为每段 UI 新建一套状态、事件或�
 | 扩展 Widget | 嵌入已正确初始化的具体控件，添加 setter 或重写少量方法，保留其排版／行为／资源清理 |
 | 实现 Widget | 嵌入 gui.WidgetBase，按需实现 Bin／Container、布局策略、Paint、交互与 Snapshot |
 | 组合 View | 简单片段用函数；有独立身份／State 时嵌 ComposeBase 实现 ComposeView.Build(ctx) |
-| 扩展 View | 外层使用自己的 ui.ViewBase[T]，以命名字段复用原 View 并显式委托生命周期；核对上下文 State 归属 |
+| 扩展 View | 需要新增参数或协调行为时，使用自己的 ui.ViewBase[T]，以命名字段复用原 View 并显式委托生命周期；仅共享修饰用 ui.Modify |
 | 实现 View | 实现 ui.WidgetView，将公开 setter／signal 协调到 Widget，使用 UpdateChild／UpdateChildren 管理内容 |
 
 ## Widget 必须核对的边界
@@ -43,13 +43,65 @@ UI 的 View 是本次声明；不要为每段 UI 新建一套状态、事件或�
 - mount／unmount 管理与宿主相关的资源；拆挂不是最终销毁。Painter.NewImage
   的资源不可跨 Painter 复用，释放后清空引用，重挂按需创建；不忽略创建失败。
 
+## 自绘与动画
+
+- ui.DrawingArea 在离屏 Software Painter 上栅格化并缓存，适合不常变化的内容。
+  新的声明式绘制闭包、UI 重建和 RequestPaint 不自动使缓存失效。业务内容变化后，
+  通过 OnShouldDraw 判断是否重新生成，例如 `*redraw = *redraw || dirty`，保留首次
+  绘制、尺寸或缩放变化给出的初始值；同时请求绘制以触发查询。请求帧与重新生成
+  是两件事，OnShouldDraw 本身不调度帧。
+  每帧都变化的图表、频谱或转动的图形，实现一个小 Widget，在 Paint 里直接用
+  窗口的 Painter 绘制，避免每帧栅格化和上传。
+- 持续动画：在 ConnectMount 中连接 Root.ConnectFrame（推进时间并 RequestPaint）
+  和 ConnectAfterPaint（仍活跃且 gui.IsDrawable 时再请求下一帧），ConnectUnmount
+  中断开。只在活跃期间请求帧；静止时不请求，空闲 CPU 应接近零。
+- 数值或曲线按固定周期采样时，用与周期等长的 animation.Linear 过渡；ease-out
+  这类提前结束的曲线会让画面每个周期先动后停，看起来一顿一顿。切换主题色、
+  启停等一次性变化适合 EaseOutCubic。Animation 需要窗口作为 FrameSource，没有
+  窗口时直接 SetValue；所有者停止时调用 Stop。
+- DrawBoxShadow 只在控件边界内可见，模糊延伸约 1.5 × BlurRadius 加偏移；
+  为阴影预留留白，否则会被裁出直边。大半径模糊的成本随后端不同，先在实际后端
+  测量 CPU 再决定是否用渐变代替。
+- 圆角背景不裁剪子控件。紧贴父控件圆角的子控件若绘制背景，矩形角会盖住父
+  控件的圆角边框；给子控件对应角设置 CornerRadius，或加足够内缩，或改用
+  BorderBox（按圆角自动内缩）。
+- 自定义输入控件（如进度拖动条）组合 Motion／Click／Drag EventController，
+  通过 AddEventController 安装。按业务选择实时更新、结束提交或预览与提交分离：
+  音量等可持续更新，进度定位可在结束时提交；取消时清理临时交互状态，并明确是否
+  恢复业务值，不为所有控件统一规定提交时机。Snapshot 补 Role 和 Text，让语义
+  快照能描述它。
+
+## 自定义文本输入与焦点
+
+- 复用 IMClient／IMContext 接收 Commit 和 Preedit，用局部 DIP 报告光标矩形。
+  预编辑不是已提交正文，不把它直接写入新文档、查找框或撤销历史；普通按键与文本
+  提交也不能合并成一条路径。只读或可编辑状态在回调中继续校验。
+- 已聚焦控件改变输入策略或 IMContext 后，在 GUI 线程调用公开的
+  gui.RefreshInputMethod(widget)。重复 SetFocusedWidget 不是刷新绑定的替代，
+  不采用反复失焦／聚焦的补偿。上下文可按控件生命周期稳定持有，是否返回它仍由
+  输入策略决定；不为绕过绑定刷新而改变只读语义。
+- 当前 IMContext.Reset 是取消组合，不是提交当前候选；没有可请求并等待的组合
+  完成入口。不要把预编辑拼音当最终文本，或合成空格键猜测候选。业务需要切换目标
+  或执行命令时，先确定可实现的组合处理策略并说明差异。
+- 当前默认指针聚焦早于 Widget 捕获阶段。StopPropagation 不撤销已经发生的焦点
+  变化，OnFocus 也不是可取消的聚焦前通知。需要避免工具栏夺走编辑焦点时使用公开
+  FocusOnPointer 策略，并分别验证鼠标、键盘及菜单操作。
+- ClickInfo.Count 在按下时可用，属于各控制器自己的序列。接入自定义文本选择手势
+  时核对竞争与取消，不能假定独立控制器能共享原生多击计数；优先复用内置文本行为。
+- CommitText 只提交已确认文本，不验证真实键盘、原生输入法绑定、预编辑和候选窗。
+  自定义文本输入须在实际桌面检查只读切换、焦点切换及 CJK 组合；键位差异先核对
+  原生提交与快捷键路径，不通过丢弃合法文本来补偿。
+
 ## View 必须核对的边界
 
 - 具体类型嵌入 ui.ViewBase[Concrete]，构造函数设置 `v.Self = v`，通过指针使用。
   WidgetView 只由 Mount、Update、Unmount 提供生命周期，无须 Build 占位方法。
 - 组合声明嵌 ui.ComposeBase[T]，实现 Build(ctx)；节点拥有独立 State，返回 nil
   仅清空内容。声明 ID 控制组件身份，不自动转发给输出 Widget；样式／布局
-  属性直接声明在内容上。WidgetView 和 ComposeView 不能同时实现。
+  属性可直接声明在内容上。若只需给组合组件或 ui.View 接口值应用共享修饰，
+  使用 ui.Modify(view)，不必为此扩展 View 或增加布局容器。包装声明需保持稳定，
+  外层显式修饰覆盖内容对应属性，ID 同时标识包装声明与输出 Widget。
+  WidgetView 和 ComposeView 不能同时实现。
 - 对象声明实现 ObjectView：Build 初始化／更新 State，Object(ctx) 只读返回
   现有对象，Release(ctx) 在后代清理后释放自己拥有的资源，也须处理构建失败。
   `ui.FindAncestor[T](ctx, id)` 只查询最近的同名对象祖先，不隐式创建或跨窗口搜索。
@@ -73,6 +125,8 @@ UI 的 View 是本次声明；不要为每段 UI 新建一套状态、事件或�
   不自行维护另一套协调树。多子挂载目标实现 MoveChildBefore。
 - Unmount 不代窗口最终销毁 Widget；AfterUpdate 在布局前，不是帧结束或已显示。
   外部异步回调通过 App.Post，检查失效的所有者，避免同步嵌套协调。
+  单次挂载后的操作可在当次 AfterUpdate 查找最新 Widget；长期关联用 Target，
+  绑定归零时释放自己建立的连接。细节见 [有状态工作区](stateful-apps.md#持久关联与挂载后的操作)。
 
 ## 获取可编译示例
 

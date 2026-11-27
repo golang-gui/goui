@@ -20,7 +20,8 @@ goui-app/
 └── references/
     ├── application.md
     ├── build-and-debug.md
-    └── custom-widget-view.md
+    ├── custom-widget-view.md
+    └── stateful-apps.md
 ```
 
 入口遵循 [Agent Skills 格式](https://agentskills.io/specification)。不同工具的
