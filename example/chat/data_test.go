@@ -77,25 +77,6 @@ func TestStoreFilterIgnoresCase(t *testing.T) {
 	}
 }
 
-// 已读只标在自己最新的一条消息上；对方回复后位置不变，没有自己的消息时不标。
-func TestReadReceiptFollowsNewestOwnMessage(t *testing.T) {
-	s := newStore()
-	lin := s.find("lin")
-	if got, want := lastMine(lin), 6; got != want {
-		t.Fatalf("lastMine = %d，应为 %d", got, want)
-	}
-	s.send("lin", "好的", today, "10:40")
-	want := len(lin.Messages) - 1
-	s.expectReply("lin")
-	s.deliverReply("lin", today, "10:41", true)
-	if got := lastMine(lin); got != want {
-		t.Fatalf("回复后 lastMine = %d，应为 %d", got, want)
-	}
-	if got := lastMine(s.find("su")); got != -1 {
-		t.Fatalf("没有自己的消息时应为 -1，得到 %d", got)
-	}
-}
-
 func TestPreviewAndLabels(t *testing.T) {
 	s := newStore()
 	if got := preview(s.find("ming")); got != "你：天气好就去" {

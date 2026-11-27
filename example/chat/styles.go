@@ -72,10 +72,8 @@ const (
 	styleBadgeText      = "chat-badge-text"
 	styleSent           = "chat-sent"
 	styleSentText       = "chat-sent-text"
-	styleSentTime       = "chat-sent-time"
 	styleReceived       = "chat-received"
 	styleReceivedText   = "chat-received-text"
-	styleReceipt        = "chat-receipt"
 	styleDay            = "chat-day"
 	styleDayText        = "chat-day-text"
 	styleSearch         = "chat-search"
@@ -172,9 +170,7 @@ func styleRules(p palette, dark bool, family string) []style.Rule {
 		style.Name(styleReceived).BackgroundColor(p.received).BorderColor(p.border).BorderWidth(1).
 			CornerRadius(geometry.CornerRadius{TopLeft: bubbleRadius, TopRight: bubbleRadius, BottomRight: bubbleRadius, BottomLeft: bubbleTail}),
 		text(styleSentText, p.sentText, 14),
-		text(styleSentTime, mix(p.sent, p.sentText, .7), 11),
 		text(styleReceivedText, p.text, 14),
-		text(styleReceipt, p.muted, 11),
 		style.Name(styleDay).BackgroundColor(p.surface).BorderColor(p.border).BorderWidth(1).Radius(10),
 		text(styleDayText, p.muted, 11),
 		text(styleSearch, p.text, 13).BackgroundColor(p.window).BorderColor(p.window).BorderWidth(1).Radius(10),

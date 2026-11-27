@@ -8,8 +8,8 @@
 //  1. Click another conversation: it opens, its unread badge clears and the
 //     message list scrolls to the newest message.
 //  2. Type a message and press Enter or click the round send button: a blue
-//     bubble appears on the right with 已读 below it (only the newest own
-//     message shows it) and the conversation moves to the top of the list.
+//     bubble appears on the right and the conversation moves to the top of
+//     the list.
 //     The send button is gray and disabled while the input is blank. The smile
 //     button opens a menu that appends an emoji to the input.
 //  3. Shortly afterwards the header and the list show three breathing dots
