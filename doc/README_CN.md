@@ -22,9 +22,46 @@ GOUI 是纯Go实现的原生 GUI 框架。用 Go 编写界面与业务逻辑，�
 | [goui-sourceview](https://github.com/golang-gui/goui-sourceview) | 代码编辑器扩展，支持语法高亮、补全、括号匹配和查找替换。 |
 | [applesdk](https://github.com/golang-gui/applesdk) | 纯 Go 的 macOS SDK 绑定，提供 StoreKit、iCloud 和 CloudKit 等服务。 |
 
+
+## 使用 AI 编写应用
+
+[GOUI 应用开发 Skill](../skills/goui-app/SKILL.md) 帮助你的 AI 正确使用 GOUI 的接口、
+状态、布局、样式和资源，并完成构建与调试。只需告诉 AI：
+
+> 请按照 https://github.com/golang-gui/goui/blob/main/skills/INSTALL.md 的说明，安装 GOUI 应用开发 Skill。
+
+AI 会按[安装说明](../skills/INSTALL.md)使用当前工具的原生技能机制完成安装，
+不支持 Skill 的工具可以直接阅读开发指南，但不等同于原生安装。
+
+## 示例
+
+macOS — 亮色外观，英文 · 音乐播放器
+
+<img src="images/music.png" alt="macOS 上的 GOUI Music：亮色音乐播放器，包含转动的唱片、随专辑变色的背景、频谱和播放列表">
+
+Linux / X11 — 暗色外观，英文 · 系统监控
+
+<img src="images/monitor.png" alt="Linux/X11 上的 GOUI Monitor：暗色系统监控，包含 CPU 环形指标、历史曲线、网络速率和进程表格">
+
+Windows — 亮色外观，中文 · 即时通讯
+
+<img src="images/chat.png" alt="Windows 上的 GOUI Chat：亮色聊天客户端，包含会话列表、消息气泡和输入区">
+
+也可以在仓库根目录直接运行当前源码：
+
+```sh
+CGO_ENABLED=0 go run ./example/music
+CGO_ENABLED=0 go run ./example/monitor
+CGO_ENABLED=0 go run ./example/chat
+```
+
 ## 体验 Demo
 
-[Demo](../example/demo) 集中展示基础控件、文本编辑、布局、数据视图、可拖出的
+Windows — Direct2D，暗色外观，英文 · 图形与动画
+
+<img src="images/demo.png" alt="Windows 上的 GOUI Demo：英文暗色图形与动画页，包含完整窗口外观">
+
+[Demo](../example/demo) 是控件展厅，集中展示基础控件、文本编辑、布局、数据视图、可拖出的
 标签页、覆盖层、图形、动画和系统集成，支持切换亮暗模式、主题色和八种界面语言。
 
 源码 Demo 正在准备 **0.8.2 / build 1**，增加自适应菜单栏、级联菜单、命令勾选和
@@ -42,24 +79,6 @@ GOUI 是纯Go实现的原生 GUI 框架。用 Go 编写界面与业务逻辑，�
 
 Linux 下载后先执行 `chmod +x goui-demo-v0.8.1-linux-amd64`，再启动程序。
 macOS 解压后打开 `GOUI Demo.app`，已使用 Developer ID 签名并通过 Apple 公证。
-
-Windows — Direct2D，暗色外观，中文 · 基础控件
-
-<img src="images/demo-windows.png" alt="Windows 上的 GOUI Demo：中文暗色基础控件页，包含完整窗口外观">
-
-macOS — OpenGL，亮色外观，英文，绿色强调色 · 数据浏览
-
-<img src="images/demo-macOS.png" alt="macOS 上的 GOUI Demo：英文亮色数据浏览页，绿色强调色，包含完整窗口外观">
-
-Linux / X11 — OpenGL，亮色外观，阿拉伯文，紫色强调色 · 图形与动画
-
-<img src="images/demo-linux.png" alt="Linux/X11 上的 GOUI Demo：阿拉伯文亮色图形页，紫色强调色，包含完整窗口外观">
-
-也可以在仓库根目录直接运行当前源码：
-
-```sh
-CGO_ENABLED=0 go run ./example/demo
-```
 
 ## 为什么选择 GOUI？
 
@@ -133,22 +152,6 @@ RSS 包含驻留的共享库页面，PSS 按进程分摊共享页面；数据为
 - **macOS 分发：** 可使用独立证书和 API 密钥文件完成 Developer ID 签名、Apple 公证、票据装订及 ZIP 归档。
 
 Demo 保留九页导航与八种语言，在现有页面更新菜单、滚动和文件选择演示。从 v0.8.1 升级前请查阅 [API 迁移](ReleaseV082.md#api-migration)。
-
-## 使用 AI 编写应用
-
-[GOUI 应用开发 Skill](../skills/goui-app/SKILL.md) 帮助你的 AI 正确使用 GOUI 的接口、
-状态、布局、样式和资源，并完成构建与调试。只需告诉 AI：
-
-> 请按照 https://github.com/golang-gui/goui/blob/main/skills/INSTALL.md 的说明，安装 GOUI 应用开发 Skill。
-
-AI 会按[安装说明](../skills/INSTALL.md)使用当前工具的原生技能机制完成安装，
-不需要 GOUI 为不同 Agent 编写适配器，也不需要你手动复制文件。
-不支持 Skill 的工具可以直接阅读开发指南，但不等同于原生安装。
-安装 Skill 不会安装或升级应用的 GOUI 依赖。
-
-需要接入或定制代码编辑器时，可使用由 SourceView 仓库独立维护的
-[SourceView 应用开发 Skill](https://github.com/golang-gui/goui-sourceview/blob/main/skills/goui-sourceview-app/SKILL.md)，
-安装方式见其[安装说明](https://github.com/golang-gui/goui-sourceview/blob/main/skills/INSTALL.md)。
 
 ## 快速上手
 
