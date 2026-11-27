@@ -23,9 +23,45 @@ in the [release policy](doc/Release.md#1-版本与发布范围).
 | [goui-sourceview](https://github.com/golang-gui/goui-sourceview) | Code editor extension with syntax highlighting, completion, bracket matching, and find/replace. |
 | [applesdk](https://github.com/golang-gui/applesdk) | Pure Go macOS SDK bindings for services including StoreKit, iCloud, and CloudKit. |
 
+## Build with an AI coding assistant
+
+The [GOUI application development Skill](skills/goui-app/SKILL.md) guides your AI through
+GOUI APIs, state, layout, styles, resources, building, and debugging. To install it, tell your AI:
+
+> Install the GOUI application development skill following https://github.com/golang-gui/goui/blob/main/skills/INSTALL.md.
+
+The AI follows the [installation instructions](skills/INSTALL.md) using its tool's native
+skill mechanism. Tools without Skill support can read the guide directly, but this is not a native installation.
+
+## Examples
+
+macOS — light appearance, English · Music player
+
+<img src="doc/images/music.png" alt="GOUI Music on macOS: light music player with a spinning record, an album-tinted background, a spectrum and a playlist">
+
+Linux / X11 — dark appearance, English · System monitor
+
+<img src="doc/images/monitor.png" alt="GOUI Monitor on Linux/X11: dark system monitor with a CPU ring, history charts, network rates and a process table">
+
+Windows — light appearance, Chinese · Messaging client
+
+<img src="doc/images/chat.png" alt="GOUI Chat on Windows: light messaging client with a conversation list, message bubbles and a composer">
+
+To run the current source from the repository root:
+
+```sh
+CGO_ENABLED=0 go run ./example/music
+CGO_ENABLED=0 go run ./example/monitor
+CGO_ENABLED=0 go run ./example/chat
+```
+
 ## Try the demo
 
-The [demo](example/demo) brings together controls, text editing, layouts, data views, detachable
+Windows — Direct2D, dark appearance, English · Graphics and animation
+
+<img src="doc/images/demo.png" alt="GOUI Demo on Windows: English graphics and animation page in dark appearance, including window chrome">
+
+The [demo](example/demo) is the widget gallery. It brings together controls, text editing, layouts, data views, detachable
 tabs, overlays, graphics, animations, and system integration. Switch between light/dark appearances, accent colors, and eight UI languages.
 
 The source demo is being prepared as **0.8.2 / build 1**, with adaptive menu bars,
@@ -44,24 +80,6 @@ The downloads above are Demo **0.8.1 / build 1**. See the [release notes](https:
 
 On Linux, run `chmod +x goui-demo-v0.8.1-linux-amd64` before launching it.
 On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized.
-
-Windows — Direct2D, dark appearance, Chinese · Basic controls
-
-<img src="doc/images/demo-windows.png" alt="GOUI Demo on Windows: Chinese basic controls in dark appearance, including window chrome">
-
-macOS — OpenGL, light appearance, English, green accent · Data browsing
-
-<img src="doc/images/demo-macOS.png" alt="GOUI Demo on macOS: English data browsing in light appearance with a green accent, including window chrome">
-
-Linux / X11 — OpenGL, light appearance, Arabic, purple accent · Graphics and animation
-
-<img src="doc/images/demo-linux.png" alt="GOUI Demo on Linux/X11: Arabic graphics page in light appearance with a purple accent, including window chrome">
-
-To run the current source from the repository root:
-
-```sh
-CGO_ENABLED=0 go run ./example/demo
-```
 
 ## Why GOUI?
 
@@ -135,22 +153,6 @@ Core controls live in `gui`, with declarative bindings in `ui`. Additional contr
 - **macOS distribution:** Developer ID signing, Apple notarization, ticket stapling and ZIP creation support portable certificate and API-key files.
 
 The demo retains nine pages and eight languages. Menu, scrolling and file-dialog examples are updated in their existing pages. See the [API migration notes](doc/ReleaseV082.md#api-migration) before upgrading from v0.8.1.
-
-## Build with an AI coding assistant
-
-The [GOUI application development Skill](skills/goui-app/SKILL.md) guides your AI through
-GOUI APIs, state, layout, styles, resources, building, and debugging. To install it, tell your AI:
-
-> Install the GOUI application development skill following https://github.com/golang-gui/goui/blob/main/skills/INSTALL.md.
-
-The AI follows the [installation instructions](skills/INSTALL.md) using its tool's native
-skill mechanism; no GOUI-specific Agent adapter or manual file copying is required.
-Tools without Skill support can read the guide directly, but this is not a native installation.
-Installing the Skill does not install or upgrade your application's GOUI dependency.
-
-For code editor integration and customization, use the
-[SourceView application development Skill](https://github.com/golang-gui/goui-sourceview/blob/main/skills/goui-sourceview-app/SKILL.md),
-maintained in the SourceView repository with its own [installation guide](https://github.com/golang-gui/goui-sourceview/blob/main/skills/INSTALL.md).
 
 ## Quick start
 
