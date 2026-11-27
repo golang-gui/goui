@@ -1,8 +1,8 @@
 # GOUI v0.8.2 发布说明
 
-状态：**发布准备中**。比较基线为 v0.8.1；源码 Demo 为 **0.8.2 / build 1**。
-正式发布前，公开下载继续提供 [v0.8.1](https://github.com/golang-gui/goui/releases/tag/v0.8.1)。
-本页描述当前源码能力，正式标签、附件与签名公证结果在 main 候选冻结后确认。
+状态：**已发布（2026-11-28）**。比较基线为 v0.8.1；Demo 为 **0.8.2 / build 1**。
+[正式 Release](https://github.com/golang-gui/goui/releases/tag/v0.8.2) 提供三平台附件、
+BUILD-INFO.md 和 SHA256SUMS；macOS ZIP 已完成 Developer ID 签名、公证和票据装订。
 
 本版本补充菜单、命令、滚动关联和窗口／文件选择能力，并修复菜单动作、悬停与
 绘制问题。当前仍处于 v0.x，升级前请检查下方 API 迁移。
@@ -127,8 +127,9 @@ DrawImage 在总变换只有平移、目标物理宽高分别等于源像素宽�
 
 ## English release notes
 
-Status: **preparing v0.8.2**, compared with v0.8.1. The source demo is **0.8.2 / build 1**;
-published downloads remain v0.8.1 until the new release is available.
+Status: **released on 2026-11-28**, compared with v0.8.1. Demo **0.8.2 / build 1**
+is available for Windows amd64, Linux amd64/X11 and macOS arm64. The macOS ZIP is
+Developer ID signed, notarized and stapled; final asset hashes are in SHA256SUMS.
 
 - Add adaptive menu bars: use the macOS system menu bar or an in-window presentation.
   Cascading submenus support pointer and keyboard navigation, edge placement and
@@ -164,11 +165,11 @@ existing pages. Current README screenshots are retained.
 
 ## 发布与维护范围
 
-计划同步分发 Windows amd64、Linux amd64／X11 和 macOS arm64 Demo。
-本轮准备不扩大架构、窗口系统或移动平台的正式支持范围。
-正式发布后从对应 Release 下载 EXE、Linux 可执行文件或 macOS .app ZIP；Linux
+已同步分发 Windows amd64、Linux amd64／X11 和 macOS arm64 Demo。
+本轮不扩大架构、窗口系统或移动平台的正式支持范围。
+从对应 Release 下载 EXE、Linux 可执行文件或 macOS .app ZIP；Linux
 文件需具有执行权限，macOS 解压后打开 GOUI Demo.app。
 
 0.8.x 为当前维护系列，重点维护最新迭代；不单独承诺对旧迭代回补，也不保证迭代
 之间无修改升级。版本和维护规则见 [Release](Release.md#1-版本与发布范围)。
-本次准备、候选冻结与最终发布进度见 [Plan](Plan.md#v082-preparation)。
+本次发布来源、验收范围及剩余缺口见 [Plan](Plan.md#v082-release)。

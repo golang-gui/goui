@@ -1,5 +1,45 @@
 # Plan
 
+<a id="v082-release"></a>
+
+## v0.8.2 正式发布（2026-11-28）
+
+比较基线 v0.8.1；冻结 main 提交为
+`9b6ad4a84c6c6f1d4daa5a487b350e313f5aaa72`，annotated tag v0.8.2 指向该提交，
+不改写标签。同步分发 Demo 0.8.2 / build 1，
+[正式 Release](https://github.com/golang-gui/goui/releases/tag/v0.8.2) 已设为 Latest。
+
+- [x] 从干净 git archive 构建本轮 CLI 和三平台正式附件，不纳入使用者未跟踪文件。
+  Go 1.25.8／CGO_ENABLED=0／trimpath／-s -w；核对 ELF amd64、PE amd64 GUI、
+  Mach-O arm64、图标及版本。Windows 文件／产品版本为 0.8.2.1，macOS plist 为 0.8.2／1。
+- [x] `go test -json ./... -count=1`：6,560 项测试／子测试、85 个测试包通过，
+  零失败、零测试跳过；159 个无测试包单列。gui／ui／widgets／pixelsnap 的 race
+  及受影响包的 vet 通过；Windows Direct2D WARP 原生回归 138 项通过，无失败或跳过。
+- [x] 三目标全仓 build 保留已在 v0.8.1 复现的两个移动入口缺桌面 main 的例外；
+  仅排除这两个入口和无生产 Go 文件目录后，Linux／Windows／macOS 的
+  240／230／229 个桌面包构建通过。额外全仓 `go vet ./...` 仍报告 mobile_build 的
+  两条 unsafe.Pointer 诊断和 settings 的一条 unreachable code，同样在干净 v0.8.1
+  复现；命令、位置与验证范围见 Release 的 BUILD-INFO.md，不计为通过。
+- [x] Linux Ubuntu 22.04.5／X11／xfwm4 4.16.1（关闭合成）／OpenGL／1×、
+  Windows 10 build 19045／Direct2D／1×、macOS 15.7.7 arm64／OpenGL／应用 1×，
+  完成最终程序的按钮、单行提交、多行编辑／右键菜单、菜单操作、外部滚动、F5、
+  窗口调整与正常退出。macOS 复核系统菜单、勾选、Auto／InWindow 及卸载；
+  Linux 复核全屏菜单定位、亮暗和中英切换；Windows 复核亮暗圆角与 80 DIP Logo。
+  三端保存选择取消后均可重开，没有写入文件；HUD 已停止，未使用 DevServer。
+- [x] macOS 正式签名含 runtime 与安全时间戳；公证任务
+  `9ae6e54a-0440-4c83-9474-2dbed2c33dd5` 为 Accepted。最终 ZIP 解压后的版本、
+  codesign、票据、Gatekeeper 与窗口操作通过。Windows／Linux 正常退出码为 0；
+  macOS Command+Q 后窗口关闭且本轮进程消失，不推断其退出码。
+- [x] BUILD-INFO.md、SHA256SUMS 与双语说明随三份正式附件发布。Draft 和公开下载
+  的五份附件均与本地原件逐字节一致；远端 tag 的 peeled SHA 与候选一致。
+- [x] Go proxy 可解析 v0.8.2；Go 1.24.13、无 replace／关闭 workspace 的独立消费方
+  运行通过，三目标编译通过；公开模块的 1,136 个 Go 文件与冻结源码逐字节一致。
+  双语 README、Demo 指南、ReleaseV082 与 Roadmap 更新发布状态和下载入口，截图保留。
+
+本轮未重复完整 IME、混合 DPI、物理 Retina、全部后端／合成器或移动端原生验收；
+不扩大发布范围。任务窗口、独立桌面和配套服务已清理，原始日志与产物保留于仓库外。
+0.8.x 继续重点维护最新迭代，不单独承诺旧迭代回补。
+
 <a id="windowhandle-headerbar-next"></a>
 
 ## WindowHandle 与 HeaderBar 分工（下一版本，2026-11-26）
@@ -43,7 +83,7 @@
 ## v0.8.2 发布准备（2026-11-25）
 
 比较基线为 v0.8.1；同步更新 Demo 0.8.2 / build 1。准备分支为
-pre-release/v0.8.2，main 的正式候选 SHA 尚未冻结。当前下载保持 v0.8.1。
+pre-release/v0.8.2；本节保留准备阶段记录，正式发布结果见[发布记录](#v082-release)。
 
 - [x] 审阅比较基线以来的变更，更新 Demo 配置、设置行版本、八语言菜单栏／级联
   菜单／命令勾选、外部滚动条及扩展名过滤示例。保留九页和现有截图。
@@ -77,10 +117,10 @@ pre-release/v0.8.2，main 的正式候选 SHA 尚未冻结。当前下载保持 
 窗口检查的缩放覆盖值曾误带入测试，使一个移动端缩放断言失败，清除环境覆盖后
 重跑专项及全仓通过，断言未改。原始失败与重跑日志、构建来源和截图保留于仓库外。
 
-- [ ] 合入 main 后冻结候选，重新构建三平台正式附件；完成实际版本字段、窗口操作、
+- [x] 合入 main 后冻结候选，重新构建三平台正式附件；完成实际版本字段、窗口操作、
   macOS 正式签名／公证／最终 ZIP、BUILD-INFO 与 SHA256SUMS 的对应检查。
-  本轮未执行 Windows／macOS 的准备预览原生操作，也未验证正式附件，不以交叉构建替代。
-- [ ] 正式标签、Draft 下载核对、发布与公开下载／Go 模块消费验证完成后更新下载入口。
+  准备预览未执行的 Windows／macOS 原生操作已由正式附件验收覆盖，范围见发布记录。
+- [x] 正式标签、Draft 下载核对、发布与公开下载／Go 模块消费验证完成后更新下载入口。
 
 0.8.x 为当前维护系列，重点维护最新迭代；现有平台范围保持 Windows amd64、
 Linux amd64/X11 与 macOS arm64。其他窗口系统、架构和移动端不随本次准备扩展承诺。

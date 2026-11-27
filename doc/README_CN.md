@@ -64,20 +64,19 @@ Windows — Direct2D，暗色外观，英文 · 图形与动画
 [Demo](../example/demo) 是控件展厅，集中展示基础控件、文本编辑、布局、数据视图、可拖出的
 标签页、覆盖层、图形、动画和系统集成，支持切换亮暗模式、主题色和八种界面语言。
 
-源码 Demo 正在准备 **0.8.2 / build 1**，增加自适应菜单栏、级联菜单、命令勾选和
+**Demo 0.8.2 / build 1** 已发布，增加自适应菜单栏、级联菜单、命令勾选和
 外部滚动条示例。变化与 API 迁移见 [v0.8.2 发布说明](ReleaseV082.md)，操作见
-[Demo 使用说明](../example/demo/README.md)。v0.8.2 正式发布前，下方下载继续提供
-已发布的 **Demo 0.8.1 / build 1**。
+[Demo 使用说明](../example/demo/README.md)。
 
 | 平台 | Demo 下载 |
 | --- | --- |
-| Windows x64 | [下载 EXE](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-windows-amd64.exe) |
-| macOS Apple Silicon | [下载 .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-darwin-arm64.zip) |
-| Linux x64 / X11 | [下载可执行文件](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-linux-amd64) |
+| Windows x64 | [下载 EXE](https://github.com/golang-gui/goui/releases/download/v0.8.2/goui-demo-v0.8.2-windows-amd64.exe) |
+| macOS Apple Silicon | [下载 .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.8.2/goui-demo-v0.8.2-darwin-arm64.zip) |
+| Linux x64 / X11 | [下载可执行文件](https://github.com/golang-gui/goui/releases/download/v0.8.2/goui-demo-v0.8.2-linux-amd64) |
 
-上方为已发布的 **Demo 0.8.1 / build 1**。来源、摘要和验收范围见[发布说明](https://github.com/golang-gui/goui/releases/tag/v0.8.1)及其 BUILD-INFO.md / SHA256SUMS 附件。
+上方为已发布的 **Demo 0.8.2 / build 1**。来源、摘要和验收范围见[发布说明](https://github.com/golang-gui/goui/releases/tag/v0.8.2)及其 BUILD-INFO.md / SHA256SUMS 附件。
 
-Linux 下载后先执行 `chmod +x goui-demo-v0.8.1-linux-amd64`，再启动程序。
+Linux 下载后先执行 `chmod +x goui-demo-v0.8.2-linux-amd64`，再启动程序。
 macOS 解压后打开 `GOUI Demo.app`，已使用 Developer ID 签名并通过 Apple 公证。
 
 ## 为什么选择 GOUI？

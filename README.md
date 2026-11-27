@@ -64,21 +64,20 @@ Windows — Direct2D, dark appearance, English · Graphics and animation
 The [demo](example/demo) is the widget gallery. It brings together controls, text editing, layouts, data views, detachable
 tabs, overlays, graphics, animations, and system integration. Switch between light/dark appearances, accent colors, and eight UI languages.
 
-The source demo is being prepared as **0.8.2 / build 1**, with adaptive menu bars,
+Demo **0.8.2 / build 1** is available, with adaptive menu bars,
 cascading menus, checked commands and an external-scrollbar example. See the
 [v0.8.2 notes and migration guide](doc/ReleaseV082.md) and the
-[demo guide](example/demo/README.md). The downloads below remain the published
-**0.8.1 / build 1** until v0.8.2 is released.
+[demo guide](example/demo/README.md).
 
 | Platform | Demo download |
 | --- | --- |
-| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-windows-amd64.exe) |
-| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-darwin-arm64.zip) |
-| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.8.1/goui-demo-v0.8.1-linux-amd64) |
+| Windows x64 | [Download EXE](https://github.com/golang-gui/goui/releases/download/v0.8.2/goui-demo-v0.8.2-windows-amd64.exe) |
+| macOS Apple Silicon | [Download .app ZIP](https://github.com/golang-gui/goui/releases/download/v0.8.2/goui-demo-v0.8.2-darwin-arm64.zip) |
+| Linux x64 / X11 | [Download executable](https://github.com/golang-gui/goui/releases/download/v0.8.2/goui-demo-v0.8.2-linux-amd64) |
 
-The downloads above are Demo **0.8.1 / build 1**. See the [release notes](https://github.com/golang-gui/goui/releases/tag/v0.8.1) and its BUILD-INFO.md / SHA256SUMS attachments for provenance and validation scope.
+The downloads above are Demo **0.8.2 / build 1**. See the [release notes](https://github.com/golang-gui/goui/releases/tag/v0.8.2) and its BUILD-INFO.md / SHA256SUMS attachments for provenance and validation scope.
 
-On Linux, run `chmod +x goui-demo-v0.8.1-linux-amd64` before launching it.
+On Linux, run `chmod +x goui-demo-v0.8.2-linux-amd64` before launching it.
 On macOS, extract and open `GOUI Demo.app`; the bundle is Developer ID signed and Apple-notarized.
 
 ## Why GOUI?

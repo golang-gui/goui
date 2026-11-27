@@ -9,13 +9,14 @@
 [设计](DesignGUIWindowChrome.md#planned-windowhandle-and-headerbar-separation)，
 任务进度见 [Plan](Plan.md#windowhandle-headerbar-next)。
 
-## v0.8.2 发布准备（2026-11-25）
+## v0.8.2 已发布（2026-11-28）
 
 Demo 更新为 0.8.2 / build 1，在现有九页中展示自适应菜单栏、级联菜单、命令勾选、
 外部滚动条关联及扩展名过滤。双语 README 与 [ReleaseV082](ReleaseV082.md) 更新
-能力和迁移说明，现有截图及 v0.8.1 下载保留。
-准备验证、main 候选冻结和正式发布进度见 [Plan](Plan.md#v082-preparation)；
-三平台正式附件、签名公证、标签和下载收尾继续遵守 [Release](Release.md)。
+能力和迁移说明，现有截图保留，公开下载更新至 v0.8.2。三平台正式附件来自同一
+冻结 main 提交，macOS 已签名、公证与装订；最终程序交互、Draft／公开下载校验及
+Go 1.24.13 独立消费验证已完成。发布来源、既有命令例外与未验收组合见
+[Plan](Plan.md#v082-release) 和 Release 的 BUILD-INFO.md；不扩大正式支持范围。
 
 原尺寸图片的起点对齐已统一放在三后端绘制实现中，Icon／Image 的 API 保持；
 原尺寸平移按物理像素步进，缩放和其他用户变换继续使用原坐标及线性采样。
